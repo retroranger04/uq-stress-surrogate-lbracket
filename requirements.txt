@@ -1,0 +1,20 @@
+# Day 1 bootstrap resolved the torch install by reusing the system-wide
+# torch 2.11.0+cu126 already present in the global Python 3.14 install,
+# via a venv created with --system-site-packages. The original spec called
+# for Python 3.11 + cu121; the deviation is logged in agent_log.md.
+#
+# If rebuilding the venv from scratch on a machine that does NOT already
+# have torch, install it first from the matching CUDA wheel index, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+# torch-geometric is then installed on top of that torch build.
+# FEniCSx is intentionally NOT listed here — FEA runs on Kaggle only.
+
+torch-geometric
+numpy
+scipy
+scikit-learn
+matplotlib
+pandas
+jupyter
+pyyaml
+tqdm

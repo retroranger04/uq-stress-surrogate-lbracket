@@ -1,0 +1,49 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[backend=biber,style=numeric-comp]{biblatex}
+
+\addbibresource{bibliography.bib}
+
+\title{Uncertainty-Aware Neural Surrogate for Parametric L-Bracket Stress Prediction}
+\author{Anonymized for submission}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% Phase 3: final abstract. Covers problem, reliability-layer contribution, headline calibration + OOD results.
+\end{abstract}
+
+\section{Introduction}
+% Phase 1: motivate parametric L-bracket stress prediction and the need for a deployment-calibrated uncertainty layer. Positioning: the contribution is the reliability layer, not the surrogate.
+
+\section{Related Work}
+% Phase 2: GNN surrogates for FEA, Deep Ensembles, Conformalized Quantile Regression, OOD detection in scientific ML. Populated from raw/papers/ curated by the Sonnet corpus curator.
+
+\section{Methods}
+% Phase 1 (surrogate + ensembles) -> Phase 2 (+ CQR) -> Phase 3 (+ OOD protocol). Parameterization, FEniCSx dataset generation, GNN architecture, ensemble training, conformal calibration.
+
+\section{Experiments}
+% Phase 1: training/eval splits, metrics definitions. Phase 2: CQR vs ensemble-only comparison. Phase 3: pre-registered OOD protocol and deployment demo.
+
+\section{Results}
+% Phase 1: surrogate accuracy + ensemble calibration. Phase 2: CQR coverage vs nominal. Phase 3: OOD behavior + deployment demo.
+
+\section{Discussion}
+% Phase 3: limitations of the reliability layer, failure modes surfaced by OOD, implications for deployment.
+
+\section{Conclusion}
+% Phase 3: restate the reliability-layer contribution and calibration guarantees.
+
+\input{ai_disclosure.tex}
+
+\printbibliography
+
+\end{document}
