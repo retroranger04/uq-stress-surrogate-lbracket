@@ -6,18 +6,26 @@ Conventions for future Claude Code sessions in this project. Read this before to
 
 Build an uncertainty-aware neural surrogate for parametric 2D L-bracket stress prediction. A GNN (PyTorch Geometric) trained on FEniCSx simulations predicts von Mises stress fields for L-brackets parameterized by hole diameter, hole position, and fillet radius. Deep Ensembles plus Conformalized Quantile Regression layered on top for deployment-calibrated uncertainty. **The contribution is the reliability layer, not the surrogate.** Target venue: CAISc 2026 Open-Ended Problems (BITS Pilani). Drafting venue-agnostically until CFP/template arrive.
 
-## Compute split (strict)
+## Compute split (strict) — revised 2026-04-17
 
-- **Local 4060 (Windows native):** development only — code, small smoke runs, plotting, eval on downloaded artifacts.
-- **Kaggle CPU:** FEniCSx parametric sweeps (~800-1000 sims). All FEA runs here.
-- **Kaggle GPU:** GNN training, ensemble training, CQR calibration.
+- **Local WSL2 (Ubuntu):** FEniCSx parametric sweeps. All FEA runs here now.
+- **Local 4060 (Windows native):** model development — code, plotting, small smoke runs.
+- **Kaggle GPU:** reserved for GNN / ensemble / CQR training only. **Not used for FEA.**
 
-No FEA runs locally. No training runs locally.
+### Why the pivot off Kaggle for FEA (2026-04-17)
+
+Four Kaggle attempts at the Day-3 sweep (v1 pyvista hang, v2 capture_output
+silence, v3 browser-lag firehose, v4 recursive-spawn deadlock) confirmed that
+the FEniCSx + multiprocessing(spawn) + Kaggle notebook combination is too
+fragile for an ~80-min unattended sweep. Each failure cost hours and the
+diagnostic feedback loop was blind (no live CLI log access). Running FEA
+locally in WSL2 gives synchronous access to stdout, debuggers, and per-sample
+artifacts — worth the machine time.
 
 ## Environment constraints
 
 - Workspace is `A:\AntigravityWF\projects\uq-stress-surrogate-lbracket\` and its subfolders only. Do not touch `C:\`.
-- Windows native. **No WSL2. No local FEniCSx install under any circumstances.**
+- Windows host for model/plotting work; **WSL2 Ubuntu for FEA runs** (pivot 2026-04-17, previously forbidden).
 - Python **3.14** venv at `venv\`, created with `--system-site-packages` so it inherits the globally-installed torch. (Original spec called for 3.11 + cu121; the Day 1 bootstrap reused the pre-existing global torch 2.11.0+cu126 to avoid a redundant ~2 GB download. Deviation logged in `agent_log.md`.)
 - Torch: `2.11.0+cu126`, CUDA 12.6 wheels, running on RTX 4060 Laptop GPU (driver 560.94, CUDA 12.6 capable). If rebuilding on a fresh machine, install from the matching CUDA 12.6 index: `pip install torch --index-url https://download.pytorch.org/whl/cu126`.
 

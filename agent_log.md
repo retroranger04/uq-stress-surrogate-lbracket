@@ -303,3 +303,160 @@ Day-3 sweep will apply this w across all valid LHS samples.
   displacement + von Mises fields + mesh, and publish the whole thing as a
   versioned Kaggle dataset. The assemble + preflight + push workflow is now
   a reusable pattern for it.
+
+## 2026-04-16 — Day 3 (in progress)
+
+**Orchestrator:** Claude Code (Opus 4.6, 1M context, high effort).
+
+### Phase A1 — Main LHS sweep pushed to Kaggle
+
+- Assembler: `scripts/assemble_kaggle_day3_main.py` (mirrors Day-2 assembler but
+  adds `src/fea/config.py` to the inlined modules so the runner can reference
+  `LOAD_W_MPA`, `TARGET_VALID`, the locked parameter ranges, and mesh targets
+  without re-deriving anything).
+- Preflight: `scripts/preflight_kaggle_day3.py` — 7 checks: file syntax, cell
+  syntax, runner heredoc syntax, base64 round-trip, inline surface exposes all
+  30 required symbols (FEA API + tags + config constants), validity behaviour
+  (nominal/worst/corner accepted, R=15 W=24 rejected), calibrated-load +
+  mesh-target constants intact, `kernel-metadata.json` keys + `code_file`.
+  All 7 checks pass on first run.
+- Notebook: `notebooks/day3_main_sweep.ipynb` — three cells:
+  1. install micromamba + fenics-dolfinx=0.9.* env (same as Day 2)
+  2. write inlined FEA payload + a `run_sweep.py` runner that (a) draws 1100
+     LHS samples from the locked ranges (scipy.stats.qmc.LatinHypercube,
+     seed=42, 3D over R/p/W), (b) filters by `check_validity`, (c) reseeds on
+     short (cap 10 reseeds), (d) spawns a `multiprocessing.get_context("spawn")`
+     pool of 4 workers, each of which writes a .msh + solves FEniCSx +
+     extracts T3 corner mesh + Lagrange-2 DOF coords + per-tag boundary DOF
+     indices, saves to a per-sample `.npz`, and emits a single `manifest.json`
+     at the end.
+  3. tar the per-sample `.npz` shards + manifest into
+     `/kaggle/working/train_dataset.tar.gz` for downstream publishing.
+- Per-sample `.npz` keys: `params`, `peak_vm`, `peak_xy`, `load_w_mpa`,
+  `coords_l2`, `vm_l2`, `coords_t3`, `vm_t3`, `elem_t3`,
+  `dof_{clamped,loaded,fillet,hole1,hole2}_{l2,t3}`. Both L2 (full-fidelity)
+  and T3 (corner-only) views saved so Phase-1 dataset.py can pick.
+- Kaggle kernel slug: `retroranger/uq-l-bracket-day-3-main-sweep`
+  (version 1). URL: https://www.kaggle.com/code/retroranger/uq-l-bracket-day-3-main-sweep
+- Status ~20s after push: `KernelWorkerStatus.RUNNING`. Moving to Phase A2.
+
+
+### Phase A2 — OOD protocol locked (pre-registration)
+
+Hard user checkpoint. Presented the 4 OOD design decisions via
+`AskUserQuestion` with recommended defaults; the user accepted all four
+recommendations verbatim:
+
+1. **Extrapolation magnitude:** +20% of each training span (moderate).
+2. **Direction:** both low and high per parameter, where feasible.
+3. **Combination:** mix of single-parameter (60) + corner OOD (40).
+4. **Total count:** ~100 samples.
+
+Full pre-registration committed to `paper/NOTES.md` under "Pre-registered
+OOD protocol (locked 2026-04-16, Day 3, BEFORE any model training)". That
+section is the permanent contract the Phase-3 evaluation will cite — no
+post-hoc narrowing, widening, or redirection of the OOD ranges is allowed.
+
+Per-parameter OOD intervals (pre-feasibility):
+- R: [1.60, 3.00) and (10.00, 11.40] mm — both directions fully feasible.
+- p: [36.00, 42.00) and (72.00, 78.00] mm — OOD-high clips at p≈74 by
+  Hole-2 tip clearance.
+- W: [12.00, 14.00) and (24.00, 26.00] mm — OOD-low clips at W=12 by
+  hole clearance.
+
+Seeds pinned: single-parameter sweep = 43, corner sweep = 44. Reseed-on-
+short policy matches the main sweep.
+
+`src/fea/ood_config.py` exposes all OOD constants and imports
+training-range bounds from `src/fea/config.py` so the two configs stay in
+sync. Module layer ensures the sweep runner cannot accidentally re-derive
+the OOD ranges from other inputs.
+
+### Phase A3 — OOD sweep pushed to Kaggle
+
+- Notebook: `notebooks/day3_ood_sweep.ipynb`. Same install + subprocess-
+  driven runner pattern as the main sweep, but the runner implements the
+  pre-registered OOD sampling:
+  - Single-parameter OOD: per (param, side) direction, 4× oversample over
+    a 3-col LHS where column 0 spans the direction's OOD range and
+    columns 1,2 span the other two parameters' training ranges. Feasibility-
+    filter, reseed-on-short, cap at 10 reseeds.
+  - Corner OOD: LHS over the full expanded [R, p, W] box (600
+    oversample), filter to rows with `count_out_of_training >= 2` AND
+    passing `check_validity`. Same reseed policy.
+  - Both direction tags are persisted on each sample ('direction', 'kind')
+    for Phase-3 per-direction evaluation.
+- Assembler: `scripts/assemble_kaggle_day3_ood.py` (adds `ood_config.py`
+  to the inlined modules; runs preflight with `--mode ood` enforcing the
+  46-symbol OOD-specific set).
+- Preflight extended: `scripts/preflight_kaggle_day3.py` now takes
+  `--mode {main,ood}` and picks the appropriate required-symbol tuple.
+  All 12 checks pass on first run for the OOD payload.
+- Kaggle kernel slug: `retroranger/uq-l-bracket-day-3-ood-sweep`
+  (version 1). URL:
+  https://www.kaggle.com/code/retroranger/uq-l-bracket-day-3-ood-sweep
+- Status ~15s after push: `KernelWorkerStatus.RUNNING`. Both main and
+  OOD sweeps are now running in parallel on Kaggle.
+
+### Phase B3 — Phase 1 experiment plan drafted
+
+Folded into `paper/NOTES.md` alongside the OOD pre-registration (single
+consistent location for locked-ahead-of-training commitments). Covers:
+architecture (MeshGraphNets encoder/processor/decoder following Pfaff
+2021), hyperparameter sweep grid (hidden ∈ {64,128,256}; layers ∈ {3,5,7};
+LR ∈ {1e-3, 5e-4}), evaluation metrics (per-node MAPE, peak MAPE, spatial
+percentile errors), baseline comparison plan, and Deep Ensembles
+training protocol (M=5 per Lakshminarayanan 2017, independent random
+init, identical data).
+
+
+### 2026-04-17 — Kaggle cleanup + pivot to local WSL2 FEA
+
+**Orchestrator:** Claude Code (Opus 4.7, 1M context, medium effort).
+
+Day-3 closed out with four consecutive Kaggle failures. Root causes now
+fully diagnosed — preserving them here because they killed the Kaggle
+branch of this project for good:
+
+| # | Symptom | Root cause | How we found out |
+|---|---------|------------|------------------|
+| v1 | install hung 8 hrs | pyvista/vtk build hang | Day-3 v2 patch notes |
+| v2 | install fine, silence 8 hrs | `subprocess.run(capture_output=True)` buffered child stdout — sweep was running but invisible | Day-3 recovery diagnosis |
+| v3 | browser lagging to crawl | FEniCSx + gmsh + MPI firehose flooded Kaggle notebook UI | Live user observation |
+| v4 | 25 min silence after `STAGE=sweep_begin`, no heartbeat | Missing `if __name__ == "__main__":` guard in `run_sweep.py` → spawn workers recursively re-ran the main module and tried to create their own `mp.Pool`, raising `An attempt has been made to start a new process before the current process has finished its bootstrapping phase` in every worker. quiet-mode stdout redirect captured the tracebacks into `/kaggle/working/day3_main/progress.log`, invisible live. Confirmed post-hoc from the downloaded progress.log (see repo history before cleanup commit). |
+
+User decision at ~14:50 UTC: stop burning Kaggle attempts, pivot FEA
+execution to local WSL2. Kaggle remains reserved for future GPU training
+only. The FEniCSx+spawn+notebook combination is too fragile and the CLI
+offers no live log access — unworkable for unattended multi-hour sweeps.
+
+**Cleanup actions (this session):**
+
+- Deleted Kaggle kernels `retroranger/uq-l-bracket-day-3-main-sweep` and
+  `retroranger/uq-l-bracket-day-3-ood-sweep` (both had been manually
+  stopped by the user; status `CANCEL_ACKNOWLEDGED`). Day-2 validation
+  kernel (`retroranger/uq-l-bracket-day-2-validation`) kept as reference.
+- Removed local Day-3 Kaggle artifacts: `notebooks/day3_main_sweep.ipynb`,
+  `notebooks/day3_ood_sweep.ipynb`, `notebooks/kaggle_day3_main/`,
+  `notebooks/kaggle_day3_ood/`, `scripts/assemble_kaggle_day3_*.py`,
+  `scripts/preflight_kaggle_day3.py`, `scripts/patch_day3_notebooks_v{2,3,4}.py`,
+  `scripts/monitor_day3.sh`, `scripts/watch_day3_finish.sh`,
+  `data/day3_monitor/`, `data/day3_main/`, `data/day3_ood/`.
+- Kept: `src/fea/` (validated FEA pipeline), `src/models/` (GNN skeleton),
+  `paper/` (draft + locked OOD protocol in `paper/NOTES.md`),
+  `data/day2_validation/`, `notebooks/kaggle_day2/`,
+  `scripts/assemble_kaggle_notebook.py`, `scripts/preflight_kaggle.py`,
+  `scripts/publish_kaggle_datasets.py` (latter three are Day-2 reference
+  or future GPU-training reuse).
+- Updated `CLAUDE.md` compute split: WSL2 FEA, no-local-FEniCSx rule
+  removed, pivot rationale documented.
+
+**State handed off to next instance:** FEA pipeline in `src/fea/` is
+validated and unchanged. LHS sweep + OOD sweep need to be re-expressed as
+plain local scripts (no notebook, no base64 embedding, no subprocess
+micromamba dance) and run inside WSL2 with a fresh FEniCSx env. The locked
+OOD protocol in `paper/NOTES.md` is unchanged — same seeds, same
+directions, same counts. The crucial run-sweep-locally fix is trivially
+to add `if __name__ == "__main__":` around pool creation; the harder parts
+(WSL2 env bootstrap, output packaging, dataset publishing path) are
+fresh-design work for the next session.

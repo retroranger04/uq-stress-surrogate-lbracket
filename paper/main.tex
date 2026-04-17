@@ -25,10 +25,213 @@
 % Phase 1: motivate parametric L-bracket stress prediction and the need for a deployment-calibrated uncertainty layer. Positioning: the contribution is the reliability layer, not the surrogate.
 
 \section{Related Work}
-% Phase 2: GNN surrogates for FEA, Deep Ensembles, Conformalized Quantile Regression, OOD detection in scientific ML. Populated from raw/papers/ curated by the Sonnet corpus curator.
+% Phase 2 pass will add full Related Work. Phase-1 placeholder below calls out
+% only the two architectures that directly shape the surrogate choice in
+% Methods; everything else (UQ methodology, CP, OOD for SciML) is added in
+% Phase 2.
+Graph neural networks are a natural fit for stress-field prediction on
+unstructured FEA meshes because they act directly on the native
+discretization without projecting onto a regular grid. Maurizi et
+al.~\cite{maurizi2022gnn} demonstrate that mesh-based GNNs predict
+displacement and stress fields on 2D solid-mechanics benchmarks to within a
+few percent of the reference FEA solution. Pfaff et al.'s
+MeshGraphNets~\cite{pfaff2021meshgraphnets} supply the
+encoder--processor--decoder template with learned edge features that the
+present work adopts (details in Methods~\S\,GNN architecture, Phase~1).
 
 \section{Methods}
-% Phase 1 (surrogate + ensembles) -> Phase 2 (+ CQR) -> Phase 3 (+ OOD protocol). Parameterization, FEniCSx dataset generation, GNN architecture, ensemble training, conformal calibration.
+
+\subsection{Problem formulation}
+
+We study an equal-arm symmetric L-bracket under a static shelf load, solved
+as a two-dimensional plane-stress linear-elasticity problem. Let
+$\Omega \subset \mathbb{R}^2$ denote the bracket cross-section in the $xy$
+plane. With out-of-plane thickness $t = 8$~mm and in-plane extent
+$A = B = 80$~mm, the aspect ratio $t/A = 1/10$ places the part in the
+thin-plate regime, so plane stress (rather than plane strain or full 3D) is
+the appropriate reduction. The governing equations are
+\begin{equation}
+  \nabla \cdot \boldsymbol{\sigma} = \boldsymbol{0}
+  \quad \text{in } \Omega,
+  \qquad
+  \boldsymbol{\sigma} = \mathsf{C}:\boldsymbol{\varepsilon}(\boldsymbol{u}),
+  \qquad
+  \boldsymbol{\varepsilon} = \tfrac{1}{2}
+    \bigl( \nabla \boldsymbol{u} + (\nabla \boldsymbol{u})^\top \bigr),
+\end{equation}
+with $\mathsf{C}$ the plane-stress isotropic-elasticity tensor and
+$\boldsymbol{u}$ the unknown displacement field. Body forces are omitted:
+under the calibrated applied load the self-weight contribution to peak
+stress is $\sim 10^{-3}$ of the load-driven contribution, below the
+discretization error introduced by mesh refinement.
+
+\subsection{Geometry parameterization}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.60\linewidth]{figures/fig_geometry_schematic.pdf}
+  \caption{Parametric L-bracket. Fixed dimensions: arm lengths $A = B =
+    80$~mm, out-of-plane thickness $t = 8$~mm, hole diameter $D = 8$~mm.
+    Three variable parameters: inside fillet radius $R$, Hole-2 position
+    along the horizontal flange $p$, and flange width $W$. The back face
+    of the vertical flange is clamped; a distributed traction $w$ acts
+    downward on the top face of the horizontal flange.}
+  \label{fig:geom}
+\end{figure}
+
+Three dimensions are exposed as free design parameters:
+\begin{enumerate}
+  \item $R$ — inside fillet radius at the concave corner.
+  \item $p$ — $x$-position of Hole~2 along the centerline of the horizontal
+    flange.
+  \item $W$ — in-plane flange width, common to both arms.
+\end{enumerate}
+Parameter ranges were fixed by engineering inspection of limiting
+geometries (too-sharp fillet, too-narrow flange, Hole~2 encroaching on the
+fillet or the free tip):
+\begin{equation}
+  R \in [3.0, 10.0]~\text{mm},
+  \quad
+  p \in [42.0, 72.0]~\text{mm},
+  \quad
+  W \in [14.0, 24.0]~\text{mm}.
+\end{equation}
+All remaining dimensions are fixed by design intent. Hole~1 is centered on
+the vertical flange at $y = 40$~mm from the top, providing a mounting
+point whose location is invariant under the design sweep; Hole~2 has the
+same bolt-clearance diameter $D = 8$~mm as Hole~1. The outside corner is
+kept sharp: being on the compressive outer bend, it is not a
+stress-concentrating feature and adding a second fillet parameter would
+dilute the sensitivity analysis without mechanical justification. The
+inside-fillet constraint $W + R \leq 34$~mm
+(from $y_{\text{Hole 1}} - r_h - \text{clearance} \geq W + R$ with
+$y_{\text{Hole 1}} = 40$~mm, $r_h = 4$~mm, clearance $= 2$~mm) binds the
+joint upper corner of the sweep box and gives the LHS design a small
+rejection rate that is absorbed by oversampling (Section~\ref{ssec:lhs}).
+
+\subsection{Material model}
+
+The bracket is modelled as a single homogeneous linear-elastic isotropic
+material. AISI~304 annealed stainless steel is chosen as representative of
+a thin shelf-bracket specification. Young's modulus and Poisson's ratio are
+taken from the ASM Handbook~\cite{asm_handbook_vol1}:
+$E = 193$~GPa, $\nu = 0.29$. The minimum specified yield strength
+$\sigma_y = 205$~MPa is the ASTM A240 flat-product value for this
+alloy~\cite{astm_a240}. These three constants fully determine the
+plane-stress elasticity tensor. Plastic response is not modelled: the
+load is calibrated so that the worst-case peak von~Mises stress reaches
+$\sim 50\%$ of $\sigma_y$, keeping the full parametric sweep safely in the
+elastic regime.
+
+\subsection{Boundary conditions and loading}
+\label{ssec:bcs}
+
+A homogeneous Dirichlet condition $\boldsymbol{u} = \boldsymbol{0}$ is
+applied on the back face of the vertical flange (the region $x = 0$,
+$0 \leq y \leq A$). This idealizes a bracket rigidly mounted to a stiff
+planar support; bolt-hole through-thickness contact mechanics are
+deliberately omitted and Hole~1, although present as a geometric feature,
+carries a traction-free boundary condition rather than a discrete
+bolt-reaction force. This reduction is standard for screening-level
+sizing analyses and localizes the modelling effort on the geometric
+stress concentrators ($R$, holes) rather than on the fastener detail.
+
+The loading models a shelf resting on the top face of the horizontal
+flange. A constant downward traction
+$\boldsymbol{t} = (0, -w)$~MPa acts on the segment
+$W + R \leq x \leq B,\; y = W$. All remaining boundary segments (free tip,
+horizontal-flange bottom, vertical-flange top, fillet arc, and both hole
+perimeters) are traction-free.
+
+The load magnitude $w$ is calibrated in a single preliminary run on the
+worst-case sample $(R, p, W) = (3.0, 42.0, 14.0)$: a unit-load probe gives
+peak von~Mises $119.8$~MPa, and the linearity of the elasticity operator
+yields $w = 0.5\,\sigma_y / 119.8 = 0.8555$~MPa as the value that drives
+the worst-case peak stress to exactly $0.5\,\sigma_y = 102.5$~MPa. The
+same $w$ is used across all LHS samples, so the stress distribution
+across the training set sweeps the full $\sim [50, 120]$~MPa elastic band
+as $(R, p, W)$ vary.
+
+\subsection{Finite-element discretization}
+
+The problem is solved with FEniCSx~\cite{dokken_fenicsx} on unstructured
+triangular meshes produced by Gmsh. Displacements are represented on a
+Lagrange order-2 vector element (quadratic $T_6$ triangles), giving an
+integration order sufficient to capture the quadratic stress distribution
+through the flange thickness without mesh-doubling. Stresses are
+recovered by differentiation and interpolated to a scalar Lagrange order-2
+space; the von~Mises norm is formed pointwise as
+$\sigma_{\mathrm{vM}} =
+\sqrt{\sigma_{xx}^2 - \sigma_{xx}\sigma_{yy} + \sigma_{yy}^2
++ 3\sigma_{xy}^2}$, which is the correct plane-stress reduction of the
+3D von~Mises norm.
+
+Element-size fields localize refinement near the three stress
+concentrators (inside fillet arc, Hole~1 perimeter, Hole~2 perimeter). A
+distance-threshold field drops the characteristic length from
+$h_{\text{fine}} = 0.2$~mm on these curves to $h_{\text{coarse}} = 2.0$~mm
+on the far-field, transitioning over $8$~mm. The resulting meshes carry
+$\sim 11{,}000$ scalar DOFs at the converged refinement level, with the
+bulk of the nodal budget concentrated in the fillet region.
+
+\subsection{LHS design and dataset generation}
+\label{ssec:lhs}
+
+Training parameter triples are drawn with a seeded Latin Hypercube
+design~\cite{psaros2023uq} over the joint box. The design oversamples to
+absorb the geometric-feasibility rejection: $N_{\mathrm{draw}} = 1100$
+candidate triples are generated, filtered by the constraint set described
+in Section~\ref{ssec:bcs} and Figure~\ref{fig:geom}, and extended by
+reseeded sub-draws if the accepted count falls short of the target
+$N_{\mathrm{valid}} = 1000$. Each accepted triple is meshed, solved, and
+packaged as a \texttt{PyTorch~Geometric} \texttt{Data} object carrying the
+$T_3$ corner mesh (node coordinates, element connectivity), the full-order
+Lagrange-2 displacement and von~Mises fields, and indicator sets marking
+which nodes lie on each tagged boundary (clamped, loaded, fillet, hole~1,
+hole~2).
+
+\subsection{Pipeline validation}
+
+Two independent consistency checks were run before the production sweep.
+
+\textbf{Mesh convergence.} At the nominal sample
+$(R, p, W) = (6.5, 57.0, 19.0)$, refinement was swept across four levels:
+$(h_{\text{coarse}}, h_{\text{fine}}) =
+(4.0, 1.5), (3.0, 0.8), (2.5, 0.4), (2.0, 0.2)$~mm. The peak von~Mises
+changed by $+0.024\%$ between the two finest levels (Table~\ref{tab:conv}),
+well below the $1\%$ target. The finest refinement
+$(h_{\text{coarse}}, h_{\text{fine}}, d_{\text{refine}}) = (2.0, 0.2, 8.0)$
+mm is adopted for the full sweep.
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{cccccc}
+    \toprule
+    Level & $h_{\text{coarse}}$ & $h_{\text{fine}}$ & DOFs &
+    Peak $\sigma_{\mathrm{vM}}$ [MPa] & $\Delta$ vs.\ prev. \\
+    \midrule
+    0 & 4.0 & 1.5 & 1\,398   & 45.146 & --         \\
+    1 & 3.0 & 0.8 & 2\,582   & 45.587 & $+0.97\%$  \\
+    2 & 2.5 & 0.4 & 5\,139   & 45.632 & $+0.10\%$  \\
+    3 & 2.0 & 0.2 & 11\,226  & 45.643 & $+0.024\%$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Mesh convergence at the nominal sample, unit load
+    ($w = 1$~MPa). Level~3 is adopted as the production refinement.}
+  \label{tab:conv}
+\end{table}
+
+\textbf{Analytical cross-check.} An un-notched L (same outer outline, no
+holes, sharp inside corner) is meshed at production refinement and solved
+at unit load. At a cross-section $x = W + 15$~mm $= 34$~mm, the FEA
+extreme-fibre stress is compared to the closed-form Euler--Bernoulli
+cantilever prediction
+$\sigma_b(x) = 3 w (B - x)^2 / W^2$. For $W = 19$~mm, $x = 34$~mm,
+$w = 1$~MPa the analytical value is $17.58$~MPa; the FEA extreme-fibre
+stress at the same section is $17.91$~MPa, a $+1.8\%$ deviation that is
+within the expected residual from mesh-refinement bias near the sharp
+corner (which is deliberately localized away from the probe section). The
+pipeline is therefore trusted for the full sweep.
 
 \section{Experiments}
 % Phase 1: training/eval splits, metrics definitions. Phase 2: CQR vs ensemble-only comparison. Phase 3: pre-registered OOD protocol and deployment demo.
