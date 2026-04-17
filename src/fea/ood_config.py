@@ -49,13 +49,13 @@ SINGLE_PARAM_DIRECTIONS = [
     ("p", "low"),  ("p", "high"),
     ("W", "low"),  ("W", "high"),
 ]
-SAMPLES_PER_DIRECTION = 10           # 6 directions * 10 = 60 single-param OOD
-N_SINGLE_PARAM_OOD = SAMPLES_PER_DIRECTION * len(SINGLE_PARAM_DIRECTIONS)  # 60
+SAMPLES_PER_DIRECTION = 25           # 6 directions * 25 = 150 single-param OOD (Day 3.5 scale-up)
+N_SINGLE_PARAM_OOD = SAMPLES_PER_DIRECTION * len(SINGLE_PARAM_DIRECTIONS)  # 150
 
-N_CORNER_OOD = 40                    # >=2 parameters simultaneously OOD
-CORNER_OOD_OVERSAMPLE = 600          # oversample the LHS box before filtering
+N_CORNER_OOD = 100                   # >=2 parameters simultaneously OOD (Day 3.5 scale-up)
+CORNER_OOD_OVERSAMPLE = 1500         # oversample the LHS box before filtering
 
-OOD_TOTAL_TARGET = N_SINGLE_PARAM_OOD + N_CORNER_OOD  # 100
+OOD_TOTAL_TARGET = N_SINGLE_PARAM_OOD + N_CORNER_OOD  # 250
 
 # --- Seeds (pinned for reproducibility, locked in pre-registration) -------
 

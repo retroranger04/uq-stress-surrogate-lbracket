@@ -12,6 +12,26 @@ Build an uncertainty-aware neural surrogate for parametric 2D L-bracket stress p
 - **Local 4060 (Windows native):** model development — code, plotting, small smoke runs.
 - **Kaggle GPU:** reserved for GNN / ensemble / CQR training only. **Not used for FEA.**
 
+## WSL2 FEA runtime (locked 2026-04-17 Day-3 closeout)
+
+- Distro: `Ubuntu-24.04` (`wsl --install -d Ubuntu-24.04 --no-launch`,
+  default user `arpit`, systemd off).
+- Conda env: `~/miniforge3/envs/fenicsx` — `fenics-dolfinx=0.9.*`, `mpich`,
+  `python-gmsh`, `pyvista`, `psutil`. dolfinx 0.10 breaks the 0.9
+  `LinearProblem` constructor — keep the `=0.9.*` pin.
+- Working dir: `~/lbracket-sweep/` (WSL native FS). Reads source from
+  `/mnt/a/AntigravityWF/projects/uq-stress-surrogate-lbracket/` but writes
+  all `.npz` + tmp meshes to `~/lbracket-sweep/output/` to avoid the
+  `/mnt/` performance penalty. Raw shards are copied back into
+  `data/day3_{main,ood}/` after the sweep. `data/` stays gitignored.
+- Sweep entry point: `scripts/run_sweep_local.py --mode {validate,smoke,lhs,
+  main,ood}`. Sequential (`n_workers=1`), SIGINT-safe, resume-capable
+  (existing `sample_NNNNN.npz` is skipped on restart), atomic `.npz` write
+  via `tmpfile + os.replace`, RAM guardrail pauses at >80% and resumes at
+  <75%. Progress every 10 samples. Regenerating the full 1100-sample
+  dataset end-to-end takes ~8 min on this laptop — no need to treat it as
+  a long-running artifact.
+
 ### Why the pivot off Kaggle for FEA (2026-04-17)
 
 Four Kaggle attempts at the Day-3 sweep (v1 pyvista hang, v2 capture_output

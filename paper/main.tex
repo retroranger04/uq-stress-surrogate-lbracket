@@ -177,18 +177,23 @@ bulk of the nodal budget concentrated in the fillet region.
 \subsection{LHS design and dataset generation}
 \label{ssec:lhs}
 
-Training parameter triples are drawn with a seeded Latin Hypercube
+Parameter triples are drawn with a seeded Latin Hypercube
 design~\cite{psaros2023uq} over the joint box. The design oversamples to
-absorb the geometric-feasibility rejection: $N_{\mathrm{draw}} = 1100$
+absorb the geometric-feasibility rejection: $N_{\mathrm{draw}} = 5500$
 candidate triples are generated, filtered by the constraint set described
 in Section~\ref{ssec:bcs} and Figure~\ref{fig:geom}, and extended by
 reseeded sub-draws if the accepted count falls short of the target
-$N_{\mathrm{valid}} = 1000$. Each accepted triple is meshed, solved, and
+$N_{\mathrm{valid}} = 5000$. Each accepted triple is meshed, solved, and
 packaged as a \texttt{PyTorch~Geometric} \texttt{Data} object carrying the
 $T_3$ corner mesh (node coordinates, element connectivity), the full-order
 Lagrange-2 displacement and von~Mises fields, and indicator sets marking
 which nodes lie on each tagged boundary (clamped, loaded, fillet, hole~1,
-hole~2).
+hole~2). The in-distribution pool is partitioned 80/10/10 into training
+($N_{\mathrm{train}} = 4000$), validation ($N_{\mathrm{val}} = 500$), and
+test ($N_{\mathrm{test}} = 500$) sets by an LHS-stratified ordering over
+the $(R, p, W)$ cube, and an additional $N_{\mathrm{ood}} = 250$ samples
+are drawn under the pre-registered OOD protocol and held out of training,
+validation, and test throughout.
 
 \subsection{Pipeline validation}
 
@@ -213,7 +218,7 @@ mm is adopted for the full sweep.
     0 & 4.0 & 1.5 & 1\,398   & 45.146 & --         \\
     1 & 3.0 & 0.8 & 2\,582   & 45.587 & $+0.97\%$  \\
     2 & 2.5 & 0.4 & 5\,139   & 45.632 & $+0.10\%$  \\
-    3 & 2.0 & 0.2 & 11\,226  & 45.643 & $+0.024\%$ \\
+    3 & 2.0 & 0.2 & 11\,234  & 45.643 & $+0.024\%$ \\
     \bottomrule
   \end{tabular}
   \caption{Mesh convergence at the nominal sample, unit load
