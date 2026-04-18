@@ -1,3 +1,79 @@
 \section*{AI Collaboration Disclosure}
 
-This work was developed in sustained collaboration with AI coding assistants. The authors maintain a continuous session log (\texttt{agent\_log.md}) recording decisions, deviations, and AI-generated artifacts throughout the project; this disclosure section is drafted continuously from that log rather than assembled retrospectively, following the precedent set by Matthew Schwartz in ``Vibe Physics.'' A final version enumerating the specific roles of each assistant, the scope of human review, and the provenance of code, figures, and text will appear in the camera-ready submission.
+This paper was produced in sustained collaboration with AI coding
+assistants. Following the precedent set by Matthew Schwartz in the
+\emph{Vibe Physics} report, we disclose the AI involvement in scope
+and kind rather than attempting to retrospectively excise it.
+
+\paragraph{Session log.}
+Every non-trivial decision, deviation from a pre-registered protocol, and
+result was recorded to a running session log (\texttt{agent\_log.md} at
+the project root) as it happened. That log, not the final code or
+figures, is the primary artifact of the human--AI collaboration and is
+the raw material for this disclosure.
+
+\paragraph{Orchestrator.}
+The end-to-end workflow was driven by Claude Code (Anthropic, Opus~4.7,
+1M-context configuration, medium reasoning effort, adaptive thinking
+disabled, auto-memory disabled) running locally against the project
+repository. The orchestrator wrote the project's Python code (FEniCSx
+sweep scripts, PyTorch-Geometric models and training loops, the
+conformal-prediction module, analysis scripts, figure generators), drove
+the dataset-generation and training compute, and drafted all sections of
+this manuscript. A human author directed the orchestrator throughout:
+choosing the scientific problem and the reliability-layer framing;
+locking the material model, parameter ranges, load calibration, and OOD
+protocol at the points marked ``locked'' in the session log before any
+model was trained; approving every deviation from the pre-registered
+protocol; reading and editing the generated manuscript sections; and
+making the publish-or-revise calls at each phase boundary.
+
+\paragraph{Research corpus and retrieval.}
+Citation claims in Related Work, Methods, and Discussion were grounded
+in the project's on-disk paper corpus (\texttt{raw/papers/}), which was
+curated in separate sessions by a different AI assistant (Claude Sonnet
+in a documented corpus-curation role) and held read-only with respect to
+the orchestrator. The orchestrator used a knowledge-graph retrieval layer
+(Graphify) over this corpus at pre-designated decision points during
+method design (GNN architecture, ensemble-size justification,
+conformal-prediction algorithm and theorem reference, OOD evaluation
+practice) to select which prior work to ground each claim on; every
+such query and its useful / partial / unused outcome is logged in the
+session log.
+
+\paragraph{Code, figures, and numerical results.}
+All code in the project repository was written by the orchestrator and
+reviewed by the human author before execution on the training and OOD
+data. All reported numerical results (per-node MAPE, peak-stress MAPE,
+coverage tables, interval widths, per-condition OOD breakdown, deferral
+rule operating points) are the direct output of that code on the frozen
+datasets and the frozen model artifacts; they were not edited,
+hand-tuned, or re-described after generation. Every figure in this paper
+is emitted programmatically by a Python script
+(\texttt{scripts/phase1\_eval.py}, \texttt{scripts/phase2\_cqr.py},
+\texttt{scripts/phase3\_ood.py}) from the cached prediction arrays, with
+the exception of the L-bracket illustration (Figure~\ref{fig:bracket_photo}),
+which is a human-produced engineering rendering.
+
+\paragraph{Manuscript text.}
+The LaTeX source was drafted by the orchestrator from the session log
+and the numerical results, and edited by the human author for tone,
+scoping, and scientific emphasis. The orchestrator did not have access
+to any information beyond the project repository and its curated corpus:
+no external web search, no out-of-project knowledge retrieval, and no
+re-use of text from prior drafts outside this repository. All
+limitations and bounded disclosures (calibration-set reuse, HP-sweep
+budget imbalance, ensemble-member epoch differences, plane-stress
+idealization, self-weight omission) are present in the manuscript
+because the session log required them to be disclosed at the point where
+they were incurred.
+
+\paragraph{What the human author contributed.}
+The scientific framing (``the contribution is the reliability layer,
+not the surrogate''), the choice of study part, the material model, the
+load calibration, the $\pm 20\%$ OOD magnitude, the deferral-rule
+framing, every ``locked'' pre-registration, every deviation approval,
+and the editorial pass on the final manuscript. The human author takes
+full responsibility for the scientific content of this paper, including
+any errors the AI-generated scaffolding introduced that the editorial
+review did not catch.

@@ -1,0 +1,46 @@
+% Auto-filled by scripts/phase2_cqr.py.
+\begin{table}[t]
+  \centering
+  \caption{Phase-2 empirical coverage and mean interval width on the
+    in-distribution test split ($N_{\mathrm{test}} = 500$, pooled across
+    $\sim 1.56 \times 10^{6}$ nodes), for the raw Gaussian ensemble
+    interval $\bar{\sigma} \pm z_{1-\alpha/2}\,s$ and the CQR-calibrated
+    interval. $\hat{Q}$ is the conformal quantile correction learned on
+    the validation split ($N_{\mathrm{val}} = 500$). Negative $\hat{Q}$
+    means the Gaussian base interval was slightly over-wide and CQR
+    tightens it; positive $\hat{Q}$ means CQR widens it to restore
+    coverage.}
+  \label{tab:phase2-coverage}
+  \begin{tabular}{cccccc}
+    \toprule
+    Nominal [\%] &
+    \multicolumn{2}{c}{Uncalibrated (Gaussian)} &
+    \multicolumn{2}{c}{CQR-calibrated} &
+    $\hat{Q}$ [MPa] \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+    & Coverage [\%] & Width [MPa] & Coverage [\%] & Width [MPa] & \\
+    \midrule
+    \input{tables/phase2_coverage_rows.tex}
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \caption{Phase-2 conditional coverage at nominal $90\%$, sliced by
+    quartile of each design parameter. Coverage is marginal across nodes
+    within the quartile; width is the mean interval width (MPa) within
+    the quartile. Coverage stays within $\pm 3$~pp of nominal across all
+    12 quartiles, and width grows with the known stress-concentration
+    geometry (smaller fillet $R$, farther hole $p$, narrower flange $W$
+    produce tighter intervals on the bulk of the graph but comparable
+    widths at the concentrator).}
+  \label{tab:phase2-conditional}
+  \begin{tabular}{llccc}
+    \toprule
+    Slice & Range & $n$ samples & Coverage [\%] & Mean width [MPa] \\
+    \midrule
+    \input{tables/phase2_conditional_rows.tex}
+    \bottomrule
+  \end{tabular}
+\end{table}

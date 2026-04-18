@@ -1,0 +1,57 @@
+% Auto-filled by scripts/phase3_ood.py.
+
+\begin{table}[t]
+  \centering
+  \caption{Phase-3 in-distribution test vs.\ out-of-distribution
+    comparison at nominal $90\%$ coverage. ID test: $N = 500$,
+    $1.56 \times 10^6$ nodes. OOD: $N = 250$, $7.15 \times 10^5$ nodes.
+    The OOD set is drawn under the pre-registered protocol
+    (Section~\ref{ssec:ood-protocol}) and was never seen during training,
+    validation, or calibration. Both accuracy and uncertainty scale degrade
+    on OOD inputs --- the defining behaviour of a reliability layer that
+    flags unfamiliar geometries rather than silently extrapolating.}
+  \label{tab:phase3-id-vs-ood}
+  \begin{tabular}{lccc}
+    \toprule
+    Metric & ID test & OOD & OOD / ID \\
+    \midrule
+    \input{tables/phase3_id_vs_ood_rows.tex}
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \caption{Phase-3 per-condition OOD breakdown at nominal $90\%$ coverage.
+    Single-parameter conditions perturb one of $(R, p, W)$ beyond its
+    training range while the other two remain in-distribution; corner OOD
+    perturbs two or three simultaneously. ``Detection'' is the fraction of
+    OOD samples above the deferral threshold $T^\star$
+    (Section~\ref{ssec:deferral}).}
+  \label{tab:phase3-conditional}
+  \begin{tabular}{lcccccc}
+    \toprule
+    Condition & $n$ & Per-node MAPE [\%] & Coverage [\%]
+      & Width [MPa] & Ens.\ std [MPa] & Detection [\%] \\
+    \midrule
+    \input{tables/phase3_conditional_rows.tex}
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \caption{Phase-3 deferral decision rule operating points. The threshold
+    $T$ is set at each indicated quantile of the per-sample mean ensemble
+    std on the ID test set, so the ``false-alarm rate'' row is the target
+    $1 - q$ by construction. The detection rate is the fraction of OOD
+    samples whose per-sample ensemble std exceeds $T$.}
+  \label{tab:phase3-deferral}
+  \begin{tabular}{lcc}
+    \toprule
+    Threshold (ID quantile) & ID false-alarm [\%] & OOD detection [\%] \\
+    \midrule
+    \input{tables/phase3_deferral_rows.tex}
+    \bottomrule
+  \end{tabular}
+\end{table}

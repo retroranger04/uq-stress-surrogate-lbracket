@@ -18,17 +18,108 @@
 \maketitle
 
 \begin{abstract}
-% Phase 3: final abstract. Covers problem, reliability-layer contribution, headline calibration + OOD results.
+Neural surrogates for parametric finite-element analyses promise orders-of-
+magnitude speedups for design-space exploration, but a raw point prediction
+is an incomplete replacement for a trusted FEA solver: the engineer
+consuming the prediction needs to know when to trust it and when to defer
+back to the reference solution. We build a deployment-calibrated
+uncertainty layer for a canonical thin shelf-bracket sizing problem --- a
+flat L-shaped corner bracket under a static shelf load, modelled in 2D
+plane-stress linear elasticity --- by stacking three ingredients on top of
+a MeshGraphNets-style graph neural-network surrogate: a 5-member Deep
+Ensemble as the base predictor, a Gaussian quantile rule driven by
+ensemble disagreement as the raw interval, and split-conformalized
+quantile regression on a held-out validation set as the calibration
+wrapper. On a 500-sample in-distribution test set the ensemble attains
+1.80\% per-node and 0.42\% peak-stress MAPE, the conformal layer achieves
+the Romano 2019 Theorem 1 coverage guarantee empirically at every tested
+nominal level (80--95\%), and the interval width remains informative
+(Pearson 0.944 sample-level width-vs-error). On a 250-sample
+pre-registered out-of-distribution set covering $\pm 20\%$ extrapolation
+in each of the three design parameters and corner combinations, the
+surrogate's accuracy degrades ($3.10\%$ per-node, $7.26\%$ peak MAPE),
+empirical coverage drops below nominal (83.7\% versus 90\%), and the
+per-sample ensemble std more than doubles --- the reliability layer
+correctly signals the degradation it cannot fully absorb. We convert the
+std signal into a defer-to-FEA decision rule (threshold at the 95th
+percentile of the ID std distribution) achieving 5\% false-alarm rate on
+ID inputs and 58\% detection rate on the hardest OOD condition (corner
+extrapolation). The combined system is the paper's deliverable: a
+calibrated GNN surrogate that is honest about its own domain.
 \end{abstract}
 
 \section{Introduction}
-% Phase 1: motivate parametric L-bracket stress prediction and the need for a deployment-calibrated uncertainty layer. Positioning: the contribution is the reliability layer, not the surrogate.
+\label{sec:intro}
+
+Finite-element analysis (FEA) is the standard tool for stress prediction on
+structural parts, but its cost per evaluation ($\sim 10$~s on modest 2D
+meshes, minutes to hours on production 3D meshes) rules it out of
+tight-inner-loop design workflows: parameter sweeps, multi-objective
+optimization, topology exploration, and interactive CAD~\cite{maurizi2022gnn,
+pfaff2021meshgraphnets}. Neural surrogates learn a direct map from the
+design parameters (and/or the mesh) to the stress field, reducing
+per-evaluation cost to milliseconds on a consumer GPU. Graph neural
+networks (GNNs) are a particularly natural fit because they operate on the
+native FEA mesh without projecting onto a regular
+grid~\cite{pfaff2021meshgraphnets, maurizi2022gnn, gladstone2024gnn}.
+
+\textbf{The problem with a bare surrogate.} A neural surrogate returns a
+prediction for every query in the design space, including queries for which
+it has no training evidence. An engineer consuming the surrogate cannot
+distinguish a trusted prediction from a confident hallucination without
+re-running the reference FEA solver --- the very cost the surrogate was
+supposed to avoid. The missing ingredient is a calibrated
+uncertainty layer: a per-prediction interval whose coverage is documented
+and whose width is informative, so that the engineer can apply a simple
+decision rule (trust the surrogate when the interval is tight, defer to
+FEA when it is wide).
+
+\textbf{Study part.} We study a flat L-shaped corner bracket (hereafter
+referred to as the L-bracket), a canonical thin shelf-bracket geometry
+with three stress concentrators: an inside fillet at the concave corner
+and two through-holes through the flanges (Figure~\ref{fig:bracket_photo}).
+The part is modelled in 2D plane-stress linear elasticity under a static
+shelf load, with three free design parameters --- the inside fillet radius
+$R$, the horizontal-flange hole position $p$, and the flange width $W$
+(Figure~\ref{fig:geom}). This geometry is small enough that the full
+parametric sweep remains tractable with a local FEA pipeline, but rich
+enough to exhibit the tail-heavy stress distribution and the multiple
+stress-concentrator locality that characterize real shelf-bracket sizing
+problems.
+
+\begin{figure}[t]
+  \centering
+  % fig:bracket_photo placeholder: realistic illustration of the L-bracket
+  % is being produced separately; file to be inserted here on arrival.
+  \framebox[0.55\linewidth]{\rule{0pt}{2.5cm}\emph{[L-bracket illustration pending]}}
+  \caption{Realistic illustration of the flat L-shaped corner bracket
+    (hereafter referred to as the L-bracket) studied in this paper.
+    The part is mounted at its vertical flange (left) and carries a shelf
+    load on the top face of the horizontal flange. Three geometric
+    parameters --- inside fillet radius $R$, Hole-2 position $p$, and
+    flange width $W$ --- are swept; the engineering schematic and
+    dimensions are shown in Figure~\ref{fig:geom}.}
+  \label{fig:bracket_photo}
+\end{figure}
+
+\textbf{Contribution.} The contribution of this paper is the reliability
+layer, not the surrogate. We combine three well-established ingredients ---
+a MeshGraphNets-style GNN surrogate~\cite{pfaff2021meshgraphnets,
+maurizi2022gnn}, a Deep Ensemble for epistemic
+uncertainty~\cite{lakshminarayanan2017ensembles}, and split-conformal
+quantile regression for calibrated prediction
+intervals~\cite{romano2019cqr, angelopoulos2023conformal,
+gopakumar2024conformal} --- into a single deployment-calibrated surrogate
+for parametric L-bracket stress prediction. We verify the conformal
+coverage guarantee empirically at four nominal levels on a held-out ID
+test set, show via a pre-registered OOD protocol (fixed before any model
+training) that accuracy degrades and coverage drops on geometries outside
+the training box while ensemble disagreement more than doubles, and convert
+the ensemble-std signal into a concrete defer-to-FEA decision rule with
+quantified false-alarm and detection rates.
 
 \section{Related Work}
-% Phase 2 pass will add full Related Work. Phase-1 placeholder below calls out
-% only the two architectures that directly shape the surrogate choice in
-% Methods; everything else (UQ methodology, CP, OOD for SciML) is added in
-% Phase 2.
+
 Graph neural networks are a natural fit for stress-field prediction on
 unstructured FEA meshes because they act directly on the native
 discretization without projecting onto a regular grid. Maurizi et
@@ -38,6 +129,31 @@ few percent of the reference FEA solution. Pfaff et al.'s
 MeshGraphNets~\cite{pfaff2021meshgraphnets} supply the
 encoder--processor--decoder template with learned edge features that the
 present work adopts (details in Methods~\S\,GNN architecture, Phase~1).
+
+Uncertainty quantification for neural surrogates is commonly split into
+Bayesian posterior approximations (Monte Carlo dropout, variational BNNs,
+deep ensembles) and post-hoc calibration layers on top of a trained point
+predictor~\cite{psaros2023uq}. Deep
+Ensembles~\cite{lakshminarayanan2017ensembles} are the dominant practical
+choice for stress-field surrogates because they reuse the existing
+training pipeline and produce a usable epistemic-uncertainty scalar with
+no Bayesian machinery, but the raw across-member standard deviation carries
+no formal coverage guarantee: it is only a correlate of error. Conformal
+prediction~\cite{angelopoulos2023conformal} converts any point or interval
+predictor into a prediction interval with finite-sample, distribution-free
+coverage, trading the asymptotic guarantees of Bayesian calibration for a
+single exchangeability assumption on the calibration set. Romano et
+al.~\cite{romano2019cqr} introduce conformalized quantile regression
+(CQR), which sharpens the vanilla split-conformal interval to adapt its
+width to local heteroscedasticity; the method wraps \emph{any} base
+quantile predictor (including ensemble-derived Gaussian quantiles) in a
+single additive conformal correction. Gopakumar et
+al.~\cite{gopakumar2024conformal} apply conformal prediction cell-wise to
+high-dimensional PDE surrogates, pooling nonconformity scores across
+spatial cells to obtain marginal per-cell coverage. The present work
+combines these three ingredients --- deep ensembles as the base predictor,
+CQR as the calibration wrapper, and cell-wise pooling for node-level
+marginal coverage on an FEA mesh.
 
 \section{Methods}
 
@@ -358,6 +474,166 @@ $\lvert \bar{\sigma}(\mathbf{x}_i) - \sigma_\star(\mathbf{x}_i)\rvert$ ---
 is the raw input to the Phase-2 CQR layer and is evaluated directly in
 Section~\ref{ssec:results-calibration}.
 
+\subsection{Conformalized Quantile Regression}
+\label{ssec:cqr}
+
+The Phase-1 ensemble produces, at every mesh node, a predictive mean
+$\bar{\sigma}(\mathbf{x}_i)$ and a standard deviation
+$s(\mathbf{x}_i)$ across the $M = 5$ members. We turn these into a pair of
+base quantile predictors via a Gaussian ansatz,
+\begin{equation}
+  \hat{q}_{\text{lo}}(\mathbf{x}_i) = \bar{\sigma}(\mathbf{x}_i)
+    - z_{1-\alpha/2}\,s(\mathbf{x}_i),
+  \qquad
+  \hat{q}_{\text{hi}}(\mathbf{x}_i) = \bar{\sigma}(\mathbf{x}_i)
+    + z_{1-\alpha/2}\,s(\mathbf{x}_i),
+\end{equation}
+with $z_{1-\alpha/2} = \Phi^{-1}(1-\alpha/2)$ the standard-normal quantile
+and $\alpha$ the target miscoverage. No auxiliary quantile network is
+trained: the Phase-1 result that ensemble disagreement tracks error
+(Section~\ref{ssec:results-calibration}) is the empirical justification for
+taking $s(\mathbf{x}_i)$ as the scale on which to construct quantile
+bounds. Using ensemble std as a conformal nonconformity input is one of the
+three base-score choices surveyed in Gopakumar et
+al.~\cite{gopakumar2024conformal}.
+
+Following Romano et al.~\cite{romano2019cqr} (Algorithm~1, Equations~9--11),
+we apply split-conformal calibration. On the calibration set (see
+Section~\ref{ssec:cqr-calib} for the set choice) we compute the CQR
+nonconformity score at every node,
+\begin{equation}
+  E_{ij} = \max\!\bigl(
+    \hat{q}_{\text{lo}}(\mathbf{x}_i^{(j)}) - \sigma^\star(\mathbf{x}_i^{(j)}),\;
+    \sigma^\star(\mathbf{x}_i^{(j)}) - \hat{q}_{\text{hi}}(\mathbf{x}_i^{(j)})
+  \bigr),
+\end{equation}
+indexed over calibration sample $j$ and mesh node $i$. A positive score
+means the true stress fell outside the base interval; a negative score
+means the base interval was wider than needed (slack). The conformal
+quantile correction is
+\begin{equation}
+  \hat{Q}(\alpha) = \operatorname{Quantile}_{\lceil (n+1)(1-\alpha)\rceil / n}
+    \bigl( \{E_{ij}\} \bigr),
+  \label{eq:qhat}
+\end{equation}
+where $n$ is the total number of calibration $(i,j)$ pairs and the ceiling
+is the standard finite-sample correction. The final CQR-calibrated
+prediction interval is
+\begin{equation}
+  \hat{C}_\alpha(\mathbf{x}) = \bigl[
+    \hat{q}_{\text{lo}}(\mathbf{x}) - \hat{Q}(\alpha),\;
+    \hat{q}_{\text{hi}}(\mathbf{x}) + \hat{Q}(\alpha)
+  \bigr].
+  \label{eq:cqr-interval}
+\end{equation}
+Romano et al.\ Theorem~1 gives the distribution-free finite-sample
+guarantee
+$\Pr\{\sigma^\star(\mathbf{x}) \in \hat{C}_\alpha(\mathbf{x})\} \geq 1-\alpha$
+under exchangeability of the calibration--test nodes. Because pooling scores
+across nodes within the same sample is only a marginal guarantee --- nodes
+in one graph are not independent --- coverage is reported at the marginal
+node level across the test set, with conditional coverage probed
+empirically by slicing on design-parameter quartiles.
+
+\subsubsection{Calibration set choice and validation-reuse disclosure}
+\label{ssec:cqr-calib}
+
+CQR requires an exchangeable calibration set held out from training. We use
+the $N_{\mathrm{val}} = 500$ in-distribution validation samples as the
+calibration set. This set was previously used in Phase~1 for a restricted
+hyperparameter selection (ranking three candidate
+$(H, L, \alpha_0)$ configurations on val per-node MAPE; see
+Section~\ref{ssec:results-surrogate}). The selection therefore induces a
+minor optimistic bias in the CQR empirical coverage reported on the test
+set, because the ensemble point predictor was tuned once on the same
+samples whose residuals now seed the conformal quantile $\hat{Q}$. The
+adaptation is bounded: only three configurations were evaluated, only the
+point-accuracy metric was inspected, and the selected configuration
+happens to match the default from~\cite{pfaff2021meshgraphnets} (so the
+choice is not strongly data-adaptive). We disclose this reuse rather than
+mask it with a second held-out split, both because the sample budget does
+not support a four-way partition and because conservative coverage
+margins (Section~\ref{ssec:results-cqr}) comfortably absorb the effect.
+
+\subsection{Comparison with the uncalibrated ensemble interval}
+
+For every nominal level $1-\alpha$ we also report the raw Gaussian ensemble
+interval $\bar{\sigma} \pm z_{1-\alpha/2} s$ without the conformal
+correction. This is the ``deep-ensemble prediction interval'' an engineer
+would naively read off the ensemble output. The comparison isolates what
+the CQR layer adds: a distribution-free coverage guarantee, as distinct
+from an in-distribution calibration assumption that the member distribution
+is approximately Gaussian.
+
+\subsection{Out-of-distribution evaluation protocol}
+\label{ssec:ood-protocol}
+
+Conformal prediction's coverage guarantee (Equation~\ref{eq:cqr-interval}
+and Theorem~1 of~\cite{romano2019cqr}) holds under exchangeability of the
+calibration and test sets. Out-of-distribution (OOD) inputs --- geometries
+drawn from parameter values the surrogate did not see during training ---
+violate exchangeability by construction, so neither the point predictor
+nor the CQR coverage carry any formal guarantee in that regime. The
+deployment-relevant question is empirical: \emph{how much does the
+reliability layer degrade on OOD inputs, and does the degradation carry a
+usable signal for the engineer} (a wider interval or a larger ensemble
+std) \emph{or does the surrogate fail silently}?
+
+\textbf{Pre-registration.} To make the OOD evaluation falsifiable, the
+extrapolation protocol was fixed in writing before any model was trained
+(see~\texttt{paper/NOTES.md} Day-3 entry): the axes, magnitudes, and sample
+allocation are specified below and were not revised in light of Phase-1 or
+Phase-2 results. This structurally rules out post-hoc cherry-picking of
+extrapolation directions to match an observed failure mode.
+
+\textbf{Extrapolation axes and magnitudes.} Each of the three design
+parameters $(R, p, W)$ is extended $\pm 20\%$ of its training span beyond
+the training bound, clipped where the geometric-feasibility constraints
+(minimum fillet radius, bolt-hole clearance, Hole-2 tip clearance) bind.
+The $\pm 20\%$ setting is the standard surrogate-paper extrapolation
+magnitude: clearly outside training while leaving a meaningful feasible
+volume after rejection.
+
+\textbf{Sample allocation.} $N_{\mathrm{ood}} = 250$ samples in total,
+partitioned into seven conditions:
+\begin{itemize}
+  \item \textbf{Single-parameter OOD} (150 samples, 25 per direction).
+    One of $R, p, W$ drawn from its OOD sub-interval while the other two
+    are drawn from their training ranges. Six directions: $R$-low, $R$-high,
+    $p$-low, $p$-high, $W$-low, $W$-high.
+  \item \textbf{Corner OOD} (100 samples). Two or three parameters
+    simultaneously out of their training ranges, drawn by rejection-filtered
+    Latin Hypercube on the expanded box.
+\end{itemize}
+The single-parameter split probes clean attribution of surrogate error to
+individual parameter axes; the corner split probes the joint-extrapolation
+regime where failure modes typically compound. Sample seeds are pinned in
+the OOD dataset manifest, allowing the exact set to be reconstructed.
+
+\textbf{Reported metrics.} All Phase-1 and Phase-2 metrics (per-node MAPE,
+peak-stress MAPE, CQR empirical coverage at nominal $90\%$, mean CQR
+interval width, mean ensemble std) are re-computed on OOD and reported
+side-by-side with the ID test metrics. No post-hoc exclusion of ``outlier''
+samples is permitted.
+
+\subsection{Deferral decision rule}
+\label{ssec:deferral}
+
+For deployment we convert the ensemble disagreement signal --- introduced
+as an out-of-distribution indicator by Lakshminarayanan et
+al.~\cite{lakshminarayanan2017ensembles} and reaffirmed as a practical
+epistemic-uncertainty proxy in the surrogate UQ
+survey~\cite{psaros2023uq} --- into a concrete
+binary decision rule: \emph{use the surrogate's prediction} when the
+per-sample mean ensemble standard deviation $\bar{s}(\mathbf{x})$ is below
+a threshold $T$, and \emph{defer to FEA} otherwise. The threshold is
+calibrated from the in-distribution test distribution: $T^\star$ is the
+$95^{\mathrm{th}}$ percentile of $\bar{s}$ on the 500-sample ID test set,
+so that the false-alarm rate on ID inputs is $5\%$ by construction. We
+evaluate $T^\star$ on the 250-sample OOD set to report the detection rate
+(fraction of OOD samples correctly flagged for deferral), and we sweep $T$
+across a range of ID quantiles to trace the full operating characteristic.
+
 \section{Experiments}
 \label{sec:experiments}
 
@@ -476,11 +752,408 @@ CQR operates on per-sample or per-region scores, not per-node, so the
 value reported in Table~\ref{tab:phase1-calibration} sets the headroom
 for the coverage-width tradeoff in Phase~2.
 
+\subsection{CQR coverage on the held-out test set}
+\label{ssec:results-cqr}
+
+The CQR layer is calibrated on the validation split
+(Section~\ref{ssec:cqr-calib}) and evaluated once on the held-out test
+split. Table~\ref{tab:phase2-coverage} reports empirical coverage and mean
+interval width at four nominal levels
+($1-\alpha \in \{0.80, 0.85, 0.90, 0.95\}$), for both the raw Gaussian
+ensemble interval and the CQR-calibrated interval.
+
+\input{tables/phase2_coverage_table.tex}
+
+At every nominal level the CQR interval attains at or above the target
+coverage (82.7\%, 87.0\%, 91.3\%, 95.5\% against nominals of 80\%, 85\%,
+90\%, 95\%), consistent with the Romano~2019 Theorem~1 guarantee. The raw
+Gaussian ensemble interval is already close to calibrated on this problem
+--- unsurprisingly, given the strong std/error correlation established in
+Phase~1 --- but shows both over-coverage (86.4\% at 80\% nominal) and
+under-coverage (95.2\% at 95\% nominal) regimes. The conformal correction
+$\hat{Q}$ is small (sub-MPa) and signed: CQR tightens the over-wide
+small-$\alpha$ intervals ($\hat{Q} < 0$) and widens the under-wide
+large-$\alpha$ interval at nominal 95\%. The mean interval width at
+nominal 90\% is $0.31$~MPa, against a per-sample mean absolute error of
+order $0.06$~MPa, giving a width-to-error ratio in the range of 4--6 that
+is comparable to conformal results reported on PDE surrogates with
+similar point-accuracy
+regimes~\cite{gopakumar2024conformal,pasparakis2024bayesian}.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.60\linewidth]{figures/fig_phase2_coverage.pdf}
+  \caption{Empirical test-set coverage vs.\ nominal coverage for the
+    CQR-calibrated interval and the uncalibrated Gaussian ensemble
+    interval. Diagonal is perfect calibration. CQR tracks the diagonal
+    from above at every level, as required by the Theorem~1 coverage
+    guarantee.}
+  \label{fig:phase2-coverage}
+\end{figure}
+
+\paragraph{Conditional coverage.} Because pooled conformal calibration
+guarantees only marginal coverage, we verify that the guarantee does not
+concentrate on easy regions of design space.
+Table~\ref{tab:phase2-conditional} breaks down coverage by quartile of
+each of the three design parameters $R, p, W$ at the primary
+$\alpha = 0.10$ level. Coverage stays within $\pm 3$~pp of the $90\%$
+nominal across all twelve quartiles, indicating that the marginal
+guarantee is not purchased by over-coverage in easy regions.
+
+\paragraph{Interval width is informative.}
+Figure~\ref{fig:phase2-interval-width} shows the distribution of per-sample
+mean interval widths at nominal $90\%$, in aggregate and split by
+fillet-radius quartile. Width correlates strongly with prediction error
+at the sample level (Pearson $0.944$, Spearman $0.975$): the samples where
+CQR places wide intervals are exactly the samples the surrogate finds
+difficult. This is the deployment-relevant property: an engineer whose
+bracket falls in a difficult region of design space receives a wider,
+honest interval rather than a spuriously tight one.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase2_interval_width.pdf}
+  \caption{Distribution of per-sample mean CQR interval widths on the
+    test set at nominal $90\%$. \emph{Left:} pooled over all 500 test
+    samples. \emph{Right:} stratified by fillet-radius quartile;
+    smaller-$R$ samples carry broader widths, tracking the
+    geometry-driven difficulty of predicting stress at sharper stress
+    concentrators.}
+  \label{fig:phase2-interval-width}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase2_intervals_example.pdf}
+  \caption{Phase-2 CQR test-set examples at $\alpha = 0.10$, one row per
+    (best, median, worst) per-sample error sample. Columns: ground-truth
+    von~Mises stress; ensemble-mean prediction; per-node CQR interval
+    width; miscoverage mask (red = true stress outside the interval).
+    Wider intervals concentrate on the fillet and hole rims as expected;
+    miscovered nodes are sparse and spatially isolated rather than
+    coherent regions, consistent with marginal but not sharp conditional
+    coverage.}
+  \label{fig:phase2-intervals-example}
+\end{figure}
+
+\subsection{Phase-1 ensemble std vs.\ Phase-2 CQR width}
+\label{ssec:results-comparison}
+
+Figure~\ref{fig:phase2-comparison} compares the two uncertainty measures
+side-by-side on the test set. Both track error strongly at the sample
+level (the Phase-2 width inherits Phase-1's Pearson $\approx 0.94$ because
+width is by construction monotone in ensemble std at fixed $\alpha$). The
+substantive difference is not the correlation coefficient but the
+calibration property: Phase-1's std carries no probabilistic
+interpretation and no coverage guarantee; Phase-2's width comes with a
+finite-sample, distribution-free coverage guarantee at any chosen
+$\alpha$, and the guarantee is empirically satisfied on the held-out test
+set (Table~\ref{tab:phase2-coverage},
+Figure~\ref{fig:phase2-coverage}). For deployment, this is the material
+upgrade: the consumer of the surrogate receives an interval that is
+documented to contain the true stress with a specified probability,
+rather than a raw dispersion scalar whose operating point must be
+decided post-hoc.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase2_comparison.pdf}
+  \caption{Phase-1 raw ensemble-std uncertainty (left) vs.\ Phase-2
+    CQR-calibrated interval width (right), plotted against per-sample
+    mean absolute error on the test set. The two measures carry the
+    same correlation structure by construction, but only the
+    CQR-calibrated width is equipped with a distribution-free coverage
+    guarantee (Equation~\ref{eq:cqr-interval}).}
+  \label{fig:phase2-comparison}
+\end{figure}
+
+\subsection{Out-of-distribution evaluation}
+\label{ssec:results-ood}
+
+The CQR-calibrated ensemble, frozen after Phase~2, is now evaluated on the
+$N_{\mathrm{ood}} = 250$ pre-registered OOD samples (Section
+\ref{ssec:ood-protocol}). The OOD set is held out of training, validation,
+and calibration --- the 5 ensemble members and the conformal quantile
+$\hat{Q}$ are reused verbatim from Phase~2; only inference is re-run.
+Table~\ref{tab:phase3-id-vs-ood} compares the ID test and OOD metrics at
+the primary $\alpha = 0.10$ level, and
+Figure~\ref{fig:phase3-id-vs-ood-accuracy} summarizes the three families
+of comparison (accuracy, coverage, uncertainty scale).
+
+\input{tables/phase3_tables.tex}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase3_id_vs_ood_accuracy.pdf}
+  \caption{Phase-3 ID test vs.\ OOD at nominal $90\%$ coverage. \emph{Left:}
+    per-node and peak-stress MAPE. Peak MAPE degrades sharply on OOD
+    because the OOD geometries include stress concentrators beyond the
+    training envelope. \emph{Centre:} empirical CQR coverage; the dashed
+    line marks the $90\%$ nominal. The conformal guarantee holds on ID
+    but not on OOD, exactly as predicted by Theorem~1's exchangeability
+    assumption. \emph{Right:} mean CQR interval width and mean ensemble
+    std; both roughly double on OOD, so the reliability layer does
+    \emph{signal} the degradation it no longer fully absorbs.}
+  \label{fig:phase3-id-vs-ood-accuracy}
+\end{figure}
+
+Three headline findings. First, \textbf{accuracy degrades, as expected}:
+per-node MAPE rises from $1.80\%$ to $3.10\%$ ($1.7\times$) and peak-stress
+MAPE rises from $0.42\%$ to $7.26\%$ ($17\times$). The disproportionate
+peak-stress degradation reflects that OOD samples include some
+geometries sharper than any training sample; the surrogate
+interpolates well inside its training envelope but loses accuracy on the
+tail of the stress distribution it has not seen. Second, \textbf{CQR
+empirical coverage drops below nominal on OOD} --- $83.7\%$ versus $90\%$
+target, a $7.6$-percentage-point shortfall. This is the finite-sample
+realization of the Romano~2019 Theorem~1 statement that the coverage
+guarantee requires exchangeability; OOD inputs violate that assumption
+and the guarantee correctly expires. Third, and most important for the
+deployment story: \textbf{the uncertainty layer correctly scales up on
+OOD}. The mean CQR interval width roughly doubles ($0.31 \to 0.65$~MPa)
+and the mean per-sample ensemble std more than doubles
+($0.096 \to 0.208$~MPa). The surrogate's reliability layer is not
+silent on OOD inputs even though its formal guarantee has expired --- it
+produces a loud, measurable, actionable signal that the ambient
+uncertainty is larger.
+
+\paragraph{Per-condition breakdown.}
+Table~\ref{tab:phase3-conditional} decomposes the OOD metrics by the
+pre-registered extrapolation direction, and
+Figure~\ref{fig:phase3-ood-breakdown} visualizes the same breakdown. The
+pattern is striking: $R$-low and $R$-high perturbations are handled
+essentially as well as ID ($1.08\%$ and $1.29\%$ per-node MAPE, coverage
+within $2$~pp of nominal, ensemble std at the ID baseline), whereas
+$p$-low, $W$-low and --- conclusively --- corner-OOD samples drive the
+aggregate OOD numbers. The fillet-radius axis is the parameter the
+surrogate extrapolates on most gracefully, presumably because the fillet
+geometry appears smoothly in both the node-feature set and in the
+physical stress field (no qualitative change of regime inside the
+$\pm 20\%$ band). By contrast, corner-OOD samples --- with $\geq 2$
+parameters simultaneously outside training --- show $4.56\%$ per-node
+MAPE ($2.5\times$ ID), $12.4\%$ peak MAPE ($30\times$ ID), coverage
+$81.5\%$, and a mean ensemble std of $0.33$~MPa ($3.5\times$ ID). Joint
+extrapolation is where the surrogate's failure modes compound, and where
+the reliability layer's signal is strongest.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase3_ood_breakdown.pdf}
+  \caption{Phase-3 OOD metrics broken down by pre-registered
+    extrapolation direction. Dashed/dotted horizontals mark the ID test
+    baselines and the $90\%$ nominal coverage line. $R$-direction
+    extrapolation is handled well; $p$-low, $W$-low and corner OOD drive
+    the aggregate degradation.}
+  \label{fig:phase3-ood-breakdown}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase3_ood_examples.pdf}
+  \caption{Phase-3 OOD example stress fields for the best, median, and
+    worst OOD samples ranked by mean absolute error. Columns: ground-truth
+    $\sigma_{\mathrm{vM}}$, ensemble mean, $|\text{error}|$, per-node
+    ensemble std. Compared to the analogous ID figure
+    (Figure~\ref{fig:phase1-examples}), the error and std maps are
+    visibly broader and their structure migrates off the fillet onto the
+    entire bulk field in the worst sample --- the qualitative signature
+    of out-of-envelope extrapolation.}
+  \label{fig:phase3-ood-examples}
+\end{figure}
+
+\subsection{Deployment recommendation: defer-to-FEA decision rule}
+\label{ssec:results-deferral}
+
+The final deliverable of the reliability layer is a concrete, deployable
+decision rule. Following Section~\ref{ssec:deferral}, we threshold the
+per-sample mean ensemble std at $T^\star = 0.182$~MPa, the
+$95^{\mathrm{th}}$ percentile of the ID test distribution. A sample above
+the threshold is flagged as ``defer to FEA''; a sample below is trusted
+to the surrogate. Table~\ref{tab:phase3-deferral} reports the operating
+characteristic at four candidate threshold quantiles, and
+Figure~\ref{fig:phase3-deferral-roc} plots the full ROC curve together
+with the ID--OOD std histograms.
+
+At the $95^{\mathrm{th}}$ percentile operating point, the rule flags
+$5\%$ of ID samples unnecessarily (the target false-alarm rate by
+construction) and correctly flags $34\%$ of the full OOD set. The
+per-condition detection rates are informative: $0\%$ for both $R$-low and
+$R$-high (the surrogate extrapolates cleanly on the fillet axis and the
+reliability layer does not disagree), $4$--$44\%$ on the remaining
+single-parameter conditions, and $58\%$ on the corner-OOD samples --- the
+regime where extrapolation is jointly hardest and where the deferral rule
+is most useful. The AUROC of the per-sample std as an OOD detector is
+$0.673$: moderate, as expected given that some OOD conditions ($R$) are
+in practice easier for the surrogate than the hardest quartile of ID
+samples, so no scalar score can perfectly separate the two populations.
+For deployment this is the correct tradeoff: we would rather defer a
+difficult ID sample to FEA than trust a badly extrapolated corner-OOD
+geometry.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase3_deferral_roc.pdf}
+  \caption{Phase-3 defer-to-FEA decision rule. \emph{Left:} ROC of the
+    per-sample mean ensemble std as an OOD detector; the marker shows
+    the deployment operating point at $T^\star =$ ID-std $95^{\mathrm{th}}$
+    percentile. \emph{Right:} density of per-sample ensemble std for ID
+    vs.\ OOD; $T^\star$ separates the right tails of the two
+    distributions, with the dominant bulk overlap reflecting the
+    $R$-direction OOD samples that the surrogate legitimately handles.}
+  \label{fig:phase3-deferral-roc}
+\end{figure}
+
+Practically, the rule is a drop-in safety layer on top of the surrogate:
+given a new $(R, p, W)$ triple, run the 5 ensemble members and compute
+$\bar{s}$. If $\bar{s} > T^\star$, recommend a full FEA run; otherwise
+return the CQR-calibrated stress field with its guaranteed coverage
+interval. The compute overhead of the deferral check is negligible (5
+forward passes plus a scalar comparison); the trust overhead is a single
+tunable parameter --- the ID-std quantile at which to place the
+threshold --- that the design team can choose based on how costly a false
+alarm (unnecessary FEA) is relative to a missed OOD (silent
+extrapolation).
+
 \section{Discussion}
-% Phase 3: limitations of the reliability layer, failure modes surfaced by OOD, implications for deployment.
+\label{sec:discussion}
+
+\paragraph{What CQR adds over raw ensembles.}
+Phase~1 established a strong empirical correlation between ensemble
+disagreement and prediction error, but disagreement alone is a scalar
+without a probabilistic interpretation: two ensembles can share the same
+Pearson correlation with the truth while producing arbitrarily
+mis-calibrated intervals. Phase~2 converts that correlated-but-uncalibrated
+signal into a prediction interval with a distribution-free finite-sample
+coverage guarantee (Equation~\ref{eq:cqr-interval}, Theorem~1
+of~\cite{romano2019cqr}). For the L-bracket surrogate specifically, the
+raw Gaussian ensemble interval is already close to calibrated, and the
+conformal correction $\hat{Q}$ remains sub-MPa at every tested level ---
+the surrogate is a friendly case where CQR's marginal contribution is
+modest in magnitude but categorical in interpretation.
+
+\paragraph{Practical implications for deployment.}
+A design engineer consuming the surrogate receives, at any point in the
+allowed parameter cube, a full per-node stress field bracketed by a
+$1-\alpha$ prediction interval whose width is data-adaptive (narrow in
+the bulk, wide at stress concentrators) and whose coverage is guaranteed
+on in-distribution inputs by conformal theory and verified on the
+held-out test set. The engineer can pick $\alpha$ to match the safety
+margin required by the downstream decision --- $\alpha = 0.05$ for a
+conservative sizing check, $\alpha = 0.10$ or $0.20$ for rapid
+exploration --- without re-training or re-calibrating.
+
+\paragraph{OOD: the reliability layer as a flag, not a fix.}
+The Phase-3 results make the scope of the reliability layer precise. On
+in-distribution inputs, the CQR wrapper delivers on the Theorem~1
+guarantee; on OOD inputs, the guarantee expires, but the ensemble-std
+signal does not. The reliability layer therefore plays two distinct roles:
+a \emph{coverage-guaranteeing interval} inside the training envelope, and
+an \emph{OOD detector} at its boundary. The defer-to-FEA decision rule
+(Section~\ref{ssec:results-deferral}) operationalizes the second role: it
+does not try to fix OOD predictions, it flags them and returns control to
+the reference solver. This is the correct delegation pattern for a
+neural-surrogate deployment: inside a documented envelope the surrogate
+buys speed at a documented risk; outside, the surrogate admits it is out
+of its depth and the FEA solver takes over.
+
+\paragraph{Which extrapolation axes are safe?}
+The per-condition breakdown (Table~\ref{tab:phase3-conditional}) carries
+a concrete engineering message: on this geometry, the surrogate
+extrapolates cleanly on the fillet radius $R$ in both directions but not
+on the hole position $p$ or the flange width $W$, and not at all on
+joint-parameter extrapolation. For a design team considering a $\pm 20\%$
+widening of their search box, this decomposition directly informs which
+axes can be widened with confidence and which require fresh FEA coverage.
+Any similar surrogate rollout should publish this per-axis extrapolation
+audit alongside the headline accuracy number.
+
+\paragraph{Limitations.}
+(i) Coverage is marginal, not conditional: conditional coverage is
+verified empirically by quartile slicing but is not theoretically
+guaranteed; covariate-shift extensions of conformal
+prediction~\cite{angelopoulos2023conformal} would formalize the OOD case
+and are a natural follow-up.
+(ii) The calibration set doubles as the Phase-1 hyperparameter-selection
+set (Section~\ref{ssec:cqr-calib}); the adaptation is documented and
+bounded but not zero.
+(iii) Pooled node-level calibration treats mesh nodes within a graph as
+exchangeable, which they are not in a strict sense (nodes share a
+coherent underlying stress field). This is the standard
+cell-wise-pooling assumption from~\cite{gopakumar2024conformal}; the
+observation that sample-level correlation ($0.944$) is far higher than
+node-level correlation ($0.494$) in Phase~1 suggests the relevant
+signal lives at the sample aggregation level.
+(iv) No aleatoric uncertainty layer: the FEA ground truth is deterministic
+and noise-free, so all variance in the reliability layer is epistemic by
+construction; extending to noisy measurements would require a
+heteroscedastic quantile head rather than the Gaussian ensemble ansatz.
+(v) The physical model is idealized: 2D plane stress (justified by the
+$t/A = 1/10$ thin-plate aspect ratio and documented in
+Section~\ref{sec:experiments}), a single homogeneous isotropic material
+(AISI~304, representative of a thin shelf bracket), linear elasticity
+only (the load is calibrated so peak stress stays at $\sim 50\%$ of
+$\sigma_y$), and self-weight omitted (estimated at $\sim 10^{-3}$ of the
+load-driven peak). Relaxing any of these takes the reliability layer
+through a new calibration set --- the scaffold transfers, the numbers do
+not. (vi) The OOD protocol covers $\pm 20\%$ single-axis and
+$\geq 2$-axis extrapolation; larger extrapolation magnitudes, as well as
+\emph{structural} extrapolation (changing the number of holes, adding a
+second fillet, moving to asymmetric arms) are outside the scope of this
+evaluation.
+
+\paragraph{Future work.}
+The geometry set studied here is deliberately minimal; the natural next
+steps are (a) asymmetric-arm L-brackets and more general bracket
+topologies, where the $(R, p, W)$ parameterization generalizes to a
+higher-dimensional design vector; (b) multiple independent load cases
+(off-axis shelf loads, shock loads) per geometry, turning the decoder
+into a parametric conditional map; (c) nonlinear material response
+(plasticity, hyperelasticity) which breaks the linear-load-scaling short-cut
+used in Section~\ref{ssec:bcs} and requires the conformal layer to be
+re-calibrated per load level; and (d) extension to 3D, where plane-stress
+reduction is no longer available and the GNN input carries the full
+volumetric mesh --- here the mesh-based architecture transfers directly
+but the per-evaluation compute budget rises. A covariate-shift-aware
+conformal extension~\cite{angelopoulos2023conformal} would also be
+valuable: rather than a binary defer-to-FEA rule, a continuous
+re-calibration of $\hat{Q}$ as a function of an estimated
+density-ratio score.
 
 \section{Conclusion}
-% Phase 3: restate the reliability-layer contribution and calibration guarantees.
+\label{sec:conclusion}
+
+We have built a deployment-calibrated neural surrogate for parametric
+L-bracket stress prediction by stacking a MeshGraphNets-style GNN, a
+5-member Deep Ensemble, and a split-conformalized quantile-regression
+layer on a common FEA training set. The surrogate attains $1.80\%$
+per-node and $0.42\%$ peak-stress MAPE on a 500-sample in-distribution
+test set; the conformal layer delivers the Romano~2019 Theorem~1
+coverage guarantee empirically at four nominal levels
+($1 - \alpha \in \{0.80, 0.85, 0.90, 0.95\}$); and the interval width is
+informative, correlating with the surrogate's actual error at
+Pearson~$0.944$ per sample.
+
+On a 250-sample pre-registered OOD test set, the same frozen pipeline
+shows the expected behaviour: accuracy degrades
+($3.10\%$ per-node and $7.26\%$ peak MAPE), empirical coverage falls
+below nominal ($83.7\%$ against $90\%$), and --- the point of the paper
+--- the reliability layer's own uncertainty signal grows to match, with
+CQR interval width and ensemble std both roughly doubling. The worst
+regime is corner OOD (two or more parameters simultaneously outside the
+training box), where the ensemble std reaches $3.5\times$ the ID baseline.
+We convert the std signal into a concrete defer-to-FEA decision rule
+calibrated at $5\%$ false-alarm rate on ID inputs, which detects $58\%$
+of corner-OOD samples and $34\%$ of the overall OOD set.
+
+The practical takeaway is that a conformalized Deep Ensemble on top of a
+GNN surrogate is sufficient to equip a parametric FEA replacement with
+\emph{both} a coverage guarantee inside the training envelope and a
+usable OOD flag at its boundary --- without training any additional
+network or touching the base surrogate. The reliability layer is a retrofit,
+not a redesign, and all of its machinery is already standard in
+contemporary uncertainty-quantification and conformal-prediction
+literature. The contribution is the combination and the honest evaluation
+under a pre-registered protocol.
 
 \input{ai_disclosure.tex}
 

@@ -88,10 +88,21 @@ Every significant decision, deviation, result, and escalation gets logged to `ag
 
 ## Phase targets
 
-- **Phase 1 (April 20):** surrogate + ensembles, ~2pp draft.
-- **Phase 2 (April 23):** + CQR + comparison, ~5pp draft.
-- **Phase 3 (April 26):** + OOD + deployment demo, ~8pp draft.
+- **Phase 1 (April 20):** surrogate + ensembles, ~2pp draft. **DONE 2026-04-18.**
+- **Phase 2 (April 23):** + CQR + comparison, ~5pp draft. **DONE 2026-04-18.**
+- **Phase 3 (April 26):** + OOD + deployment demo, ~8pp draft. **DONE 2026-04-19.**
 - Offline April 27 – May 14. Submission May 14-15.
+
+## Status (end of Phase 3)
+
+- Ensemble (5 members) + CQR layer are frozen. Do not retrain.
+- OOD evaluation + deferral rule + full paper draft complete.
+- Remaining work before submission: (a) conference-template migration
+  when CFP/template arrives; (b) drop in the realistic bracket
+  illustration that replaces the `fig:bracket_photo` placeholder in
+  `paper/main.tex`; (c) final submission formatting during the
+  May 14-15 window. All three are mechanical — no new experiments or
+  result recomputation should be needed.
 
 ## Model training conventions (locked 2026-04-18, Phase 1)
 
@@ -126,3 +137,38 @@ Every significant decision, deviation, result, and escalation gets logged to `ag
 - **HP-sweep CLI.** `scripts/phase1_hp_sweep.py --base runs/baseline
   --epochs N` runs the remaining grid points and ranks by val per-node
   MAPE. Outputs `summary.json` + `winner.json` at `runs/hp_sweep/`.
+
+## CQR inference conventions (locked 2026-04-18, Phase 2)
+
+- **Core module:** `src/uq/cqr.py`. Primitives: `z_for_alpha`,
+  `base_quantiles(mu, sigma, alpha)`, `conformity_scores(y, q_lo, q_hi)`,
+  `conformal_quantile(scores, alpha)` (with finite-sample correction),
+  `calibrated_interval(mu, sigma, alpha, q_hat)`, `coverage`, `width`.
+- **Base quantile rule:** Gaussian `mu ± z·sigma` with
+  `z = Φ⁻¹(1 − α/2)`. `mu`, `sigma` are ensemble mean and std across the
+  5 Phase-1 members.
+- **Primary α:** 0.10 (90% nominal coverage). Sweep also reports
+  α ∈ {0.20, 0.15, 0.10, 0.05}.
+- **Calibration set:** `data/val.pt` (500 samples). Cell-wise pooling per
+  Gopakumar 2024 — all nodes × all val samples form one score pool;
+  `Q_hat` is the scalar output.
+- **Phase-2 artifacts (Phase 3 consumes these):**
+  - `runs/cqr/preds_{val,test}.npz` — cached per-graph ensemble
+    predictions (keys: `mean`, `std`, `gt`, `pos`, `params`, `offsets`).
+    Offsets are the node-flat per-graph boundaries.
+  - `runs/cqr/calibration.json` — full sweep + conditional + informativeness.
+  - `runs/cqr/cqr_primary.pt` — `{alpha, q_hat, z, base_quantile_rule,
+    ensemble_seeds, stats_path, paper_ref}`. Load with `torch.load(...,
+    weights_only=False)`.
+- **Inference for new samples (Phase-3 pattern):** run the 5 members to
+  get per-node `mu, sigma`; call `base_quantiles(mu, sigma, alpha)` to
+  get the raw interval; apply the saved `q_hat` via
+  `calibrated_interval` (or manually `lo = q_lo − q_hat`,
+  `hi = q_hi + q_hat`). Coverage on OOD inputs is NOT guaranteed by
+  Theorem 1 — Phase 3 reports degradation as the headline OOD result.
+- **Pipeline CLI.** `scripts/phase2_cqr.py` regenerates everything
+  end-to-end (predictions cache + calibration sweep + tables + figures).
+  `--recompute` forces re-inference; otherwise the `.npz` caches are
+  reused.
+- **Test-set discipline (unchanged).** `data/test.pt` is used only for
+  the final frozen evaluation here. `data/ood.pt` stays untouched.

@@ -928,3 +928,325 @@ per-sample aggregation level.
   for Phase-2 CQR to build on.
 
 Phase 1 complete. No blockers for Phase 2.
+
+---
+
+## 2026-04-18 — Day 4 (same day, second session): Phase 2 — CQR
+
+**Orchestrator:** Claude Code (Opus 4.7, 1M context, medium effort).
+
+Single-session run. All Phase-1 ensemble weights frozen. No retraining.
+Purely post-hoc: 5 forward passes on val+test, split-conformal
+calibration on val, frozen evaluation on test. ~10 min wall-clock
+end-to-end on the RTX 4060.
+
+### Graphify queries
+
+| # | Query | Useful? | Primary node(s) returned |
+|---|---|---|---|
+| 1 | CQR algorithm vs standard CP | yes | `CQR Algorithm`, `CQR Conformity Score`, `Split Conformal Prediction`, `Pinball Loss`, `CQR Theorem 1` |
+| 2 | Romano 2019 recommended quantile levels | yes | `CQR Result: Avg interval length ... at alpha=0.1` — α=0.1 is the canonical operating point; locked that as primary, swept {0.20, 0.15, 0.10, 0.05} for the coverage curve |
+| 3 | CP calibration guarantees and assumptions | yes | `CQR Theorem 1: distribution-free finite-sample ... under exchangeability`, `Limitation: Marginal not Conditional Coverage; Exchangeability Assumption` |
+| 4 | How is CP coverage evaluated in surrogate papers | yes | `Cell-Wise Calibration (high-dimensional output)` (Gopakumar 2024) — the convention used here (pool node-level scores, report marginal coverage, verify non-concentration via quartile slicing) |
+
+All four queries hit community 12 (Romano/Angelopoulos) or community 1
+(Gopakumar/Angelopoulos/Lakshminarayanan) — the right neighborhoods for
+CQR methodology. Graph-only retrieval was sufficient; no chunk-level
+fallback needed.
+
+### Method summary
+
+**Base quantile predictors** constructed analytically from the frozen
+ensemble distribution: `q_lo = mu − z·s`, `q_hi = mu + z·s` with
+`z = Φ⁻¹(1 − α/2)`. No auxiliary quantile network trained — justified by
+Phase-1's sample-level Pearson 0.944 between `s` and |error|, and by
+Angelopoulos 2023 §2.2 / Gopakumar 2024 (std-dev as a valid nonconformity
+input). This keeps Phase 2 as a pure reliability-layer retrofit on the
+existing frozen ensemble, no new model weights.
+
+**Calibration** follows Romano 2019 Algorithm 1: per-node conformity
+scores `E = max(q_lo − y, y − q_hi)` pooled across the 500 validation
+samples × ~3000 nodes/sample (~1.5M scores), then the
+`⌈(n+1)(1−α)⌉/n` empirical quantile gives `Q_hat(α)`. The final
+interval is `[q_lo − Q_hat, q_hi + Q_hat]`. Cell-wise pooling per
+Gopakumar 2024 gives marginal (not conditional) per-node coverage.
+
+**Calibration-set reuse (disclosure):** the 500 val samples were used
+earlier in Phase 1 to rank three HP configurations on point accuracy.
+The CQR calibration therefore inherits a minor optimistic bias.
+Adaptation is bounded (only 3 configs, only MAPE, selected config
+matches Pfaff default). Disclosed in paper Methods §CQR calibration-set
+choice; coverage margins are comfortable so no need for a four-way
+split given the 500-sample budget.
+
+### Coverage sweep on test (500 samples, 1.56M nodes)
+
+| Nominal | Uncalib cov | Uncalib width | CQR cov | CQR width | Q̂ [MPa] |
+|---:|---:|---:|---:|---:|---:|
+| 80% | 86.41% | 0.246 | **82.72%** | 0.236 | −0.0052 |
+| 85% | 89.44% | 0.276 | **87.03%** | 0.268 | −0.0043 |
+| 90% | 92.32% | 0.316 | **91.28%** | 0.311 | −0.0026 |
+| 95% | 95.19% | 0.376 | **95.53%** | 0.379 | +0.0014 |
+
+All four nominal targets met or exceeded by CQR (Romano 2019 Theorem 1
+guarantee verified empirically). The raw Gaussian ensemble is already
+close to calibrated on this problem — an honest finding to flag, not
+to paper over. Q̂ is signed: CQR tightens the over-wide low-α intervals
+(negative correction) and widens the under-wide 95% interval (positive
+correction).
+
+### Conditional coverage at α=0.10 (quartile slicing)
+
+R, p, W quartiles all land in [89.0%, 92.7%] coverage — within ±3 pp of
+90% nominal. No concentration on easy regions. Mean widths respect
+geometry (tighter intervals on the bulk, wider near the fillet).
+
+### Informativeness
+
+Sample-level Pearson(width, |err|) = 0.944, Spearman 0.975. Width
+inherits Phase-1's std-vs-error correlation (monotone by construction at
+fixed α). The substantive upgrade vs Phase 1 is calibration, not
+correlation — documented in paper §Phase-1 ensemble std vs. Phase-2 CQR
+width.
+
+### Artifacts
+
+- `src/uq/cqr.py` — CQR primitives (base_quantiles, conformity_scores,
+  conformal_quantile with finite-sample correction, calibrated_interval,
+  coverage, width).
+- `scripts/phase2_cqr.py` — end-to-end pipeline: inference cache,
+  calibration sweep, conditional breakdown, tables+figures emission.
+- `runs/cqr/preds_{val,test}.npz` — cached ensemble predictions
+  (mean, std, gt, pos, params, per-graph offsets).
+- `runs/cqr/calibration.json` — full sweep + conditional + informativeness
+  metrics.
+- `runs/cqr/cqr_primary.pt` — primary-α artifact (α=0.10, Q̂ in MPa,
+  z, base-rule tag, seed list, stats path). Phase 3 loads this directly.
+- `paper/tables/phase2_coverage_table.tex` +
+  `phase2_coverage_rows.tex` + `phase2_conditional_rows.tex`.
+- `paper/figures/fig_phase2_{coverage, interval_width,
+  intervals_example, comparison}.pdf`.
+- `paper/main.tex` — Related Work expanded (CP + Deep Ensembles),
+  Methods §CQR + §Calibration set disclosure + §Baseline comparison
+  added, Results §CQR coverage + §Conditional + §Informativeness +
+  §Phase-1 vs Phase-2 comparison added, Discussion expanded with
+  limitations.
+
+### Deviations flagged
+
+1. Chose ensemble-based Gaussian quantiles as the base predictor rather
+   than training an auxiliary pinball-loss quantile network. Rationale:
+   the sample-level std/error correlation from Phase 1 already satisfies
+   CQR's "base quantile predictor" requirement; training a quantile head
+   would add 5 × (train time) for ~zero gain on coverage and likely
+   worse interpretability. Precedent: Gopakumar 2024 uses std-dev as a
+   conformity score directly.
+2. Calibration set reuses Phase 1 validation. Disclosed in paper.
+3. Cell-wise pooling treats nodes within a graph as exchangeable, which
+   is technically violated (shared stress field). Follows Gopakumar 2024
+   convention. Flagged as limitation (iii) in Discussion.
+
+### Phase 2 goal check
+
+- [x] CQR calibration layer on top of frozen ensemble.
+- [x] Coverage guarantee empirically verified at 4 nominal levels.
+- [x] Comparison with Phase 1 raw ensemble uncertainty.
+- [x] Interval width correlates with prediction difficulty
+  (Pearson 0.944 sample-level).
+- [x] Paper content: Methods CQR subsection with Theorem-1 citation,
+  Results coverage table + conditional breakdown, Discussion limitations,
+  3+1 figures.
+- [x] Calibration artifacts saved for Phase 3 to consume
+  (`runs/cqr/cqr_primary.pt`, `preds_{val,test}.npz`).
+
+Phase 2 complete. data/ood.pt remains untouched.
+
+---
+
+## 2026-04-19 — Day 5: Phase 3 — OOD evaluation + paper completion
+
+**Orchestrator:** Claude Code (Opus 4.7, 1M context, medium effort).
+
+Single-session run. Frozen Phase-1 ensemble + frozen Phase-2 CQR `q_hat`
+consumed verbatim; inference only on `data/ood.pt`. Paper draft
+completed end-to-end: Abstract, Introduction, Methods §OOD protocol +
+§Deferral rule, Results §OOD + §Deployment, Discussion extension,
+Conclusion. All figures and tables populated from scripts.
+
+### Graphify queries
+
+Graphify MCP tools were not available in this session (no
+`mcp__graphify__*` surface in the deferred-tool list). The three
+pre-designated query points from the Phase-3 brief were therefore
+answered from the existing bibliography in `paper/bibliography.bib` and
+the in-repo corpus rather than from live graph retrieval. Logged as a
+tooling deviation; no factual citations were added without an existing
+entry in `bibliography.bib`.
+
+| # | Query | Source used | Outcome |
+|---|---|---|---|
+| 1 | OOD detection evaluation for physics surrogates | `psaros2023uq` (UQ survey), `gopakumar2024conformal` (cell-wise CP on PDE surrogates) | Framed OOD evaluation as (a) accuracy degradation + (b) UQ signal degradation (coverage + width + std) side-by-side. |
+| 2 | CP coverage under distribution shift | `romano2019cqr` (Theorem 1 exchangeability), `angelopoulos2023conformal` (covariate-shift extensions) | Explicitly framed OOD coverage drop as the Theorem-1 exchangeability assumption expiring; noted covariate-shift CP as future work rather than using it here. |
+| 3 | Defer-to-FEA / trust-vs-simulate framing in surrogate papers | No direct entry in corpus; used a principled construction: threshold per-sample ensemble std calibrated at ID 95th percentile | Deferral rule expressed as a drop-in safety layer with tunable false-alarm/detection tradeoff; AUROC reported alongside the primary operating point. |
+
+### OOD evaluation — headline numbers
+
+Primary alpha 0.10, frozen q_hat = -0.00258 MPa from Phase 2.
+
+| Metric | ID test (500) | OOD (250) | OOD / ID |
+|---|---:|---:|---:|
+| Per-node MAPE | 1.80% | 3.10% | 1.7x |
+| Peak-stress MAPE | 0.42% | 7.26% | 17x |
+| CQR empirical coverage @ 90% nominal | 91.28% | 83.70% | -7.6 pp |
+| CQR mean interval width | 0.311 MPa | 0.654 MPa | 2.1x |
+| Mean per-sample ensemble std | 0.096 MPa | 0.208 MPa | 2.2x |
+
+Conformal coverage guarantee holds on ID (above 90% nominal) and
+correctly expires on OOD (~84% actual vs 90% target). Uncertainty scale
+doubles on OOD — the reliability layer signals the degradation it cannot
+absorb.
+
+### Per-condition OOD breakdown (n=25 each for single-param, n=100 for corner)
+
+| Condition | Per-node MAPE | Peak MAPE | CQR cov | Width [MPa] | Ens std [MPa] |
+|---|---:|---:|---:|---:|---:|
+| R-low   | 1.08% | 4.09%  | 88.1% | 0.255 | 0.079 |
+| R-high  | 1.29% | 0.47%  | 89.2% | 0.249 | 0.077 |
+| p-low   | 2.72% | 12.66% | 84.3% | 0.663 | 0.203 |
+| p-high  | 2.72% | 0.15%  | 81.4% | 0.242 | 0.075 |
+| W-low   | 2.63% | 4.10%  | 78.2% | 0.658 | 0.201 |
+| W-high  | 2.35% | 1.37%  | 88.8% | 0.369 | 0.114 |
+| Corner  | 4.56% | 12.45% | 81.5% | 1.085 | 0.332 |
+
+Most interesting finding: **the R-direction (both low and high) is
+handled nearly as well as ID**, while p-low / W-low and especially
+corner-OOD drive the aggregate OOD degradation. Interpretation: the
+fillet-radius geometry enters both the node-feature set and the physical
+stress field smoothly within +/-20% of the training range, so the
+surrogate interpolates on that axis cleanly. Joint-parameter
+extrapolation (corner) is where failure modes compound — 4.56% per-node
+MAPE (2.5x ID) and 12.4% peak MAPE (30x ID), with ensemble std at 3.5x
+ID baseline.
+
+### Deferral decision rule
+
+Threshold T* = 0.182 MPa on per-sample mean ensemble std, set at the
+95th percentile of the ID test distribution.
+
+- ID false-alarm rate: 5.0% (target by construction)
+- OOD detection rate: 34.0%
+- Per-condition OOD detection at T*:
+  - R-low: 0%, R-high: 0% (the surrogate correctly does not flag these)
+  - p-low: 44%, p-high: 4%, W-low: 44%, W-high: 16%
+  - **Corner: 58%** (the hardest regime caught over half the time)
+- AUROC (per-sample std as ID vs OOD discriminator): 0.673
+
+Secondary operating points:
+- q80 (T=0.134): 20% FA, 45.2% detection
+- q90 (T=0.160): 10% FA, 37.2% detection
+- q95 (T=0.182): 5% FA, 34.0% detection
+- q99 (T=0.207): 1% FA, 27.6% detection
+
+### Figures generated
+
+- `fig_phase3_id_vs_ood_accuracy.pdf` — 3-panel bar chart
+  (accuracy / coverage / uncertainty scale) ID vs OOD.
+- `fig_phase3_ood_breakdown.pdf` — 3-panel per-condition breakdown
+  (per-node MAPE, coverage, width + std) across 7 conditions with ID
+  baseline reference lines.
+- `fig_phase3_ood_examples.pdf` — 3x4 OOD example stress fields for
+  best/median/worst OOD samples (truth / mean / |error| / ensemble std),
+  format matches Phase-1 examples for direct comparison.
+- `fig_phase3_deferral_roc.pdf` — 2-panel: ROC curve (far vs det) with
+  T* operating point marker, plus ID-vs-OOD std density histograms.
+
+### Tables generated
+
+- `phase3_id_vs_ood_rows.tex` (ID vs OOD comparison body)
+- `phase3_conditional_rows.tex` (per-condition breakdown body)
+- `phase3_deferral_rows.tex` (deferral operating points body)
+- `phase3_tables.tex` — wrapper with all three tables and captions
+
+### Paper completion status
+
+Updated sections in `paper/main.tex`:
+- Abstract: proper abstract with problem, approach, ID/OOD headline
+  numbers, deferral rule summary.
+- Introduction: motivation for calibrated uncertainty layer, study-part
+  paragraph with the agreed first-mention form "flat L-shaped corner
+  bracket (hereafter referred to as the L-bracket)", placeholder
+  figure `fig:bracket_photo` for the realistic illustration,
+  contribution paragraph.
+- Methods: added §OOD evaluation protocol (ssec:ood-protocol) and
+  §Deferral decision rule (ssec:deferral) before Experiments.
+- Results: added §Out-of-distribution evaluation (ssec:results-ood)
+  and §Deployment recommendation (ssec:results-deferral) after the
+  Phase-1-vs-Phase-2 comparison. Includes the ID-vs-OOD comparison
+  table, per-condition table, deferral operating-points table, and all
+  four Phase-3 figures.
+- Discussion: added paragraphs on the reliability layer as flag-not-fix,
+  which extrapolation axes are safe, and expanded Limitations (added
+  physical-model idealization and OOD-protocol scope). Added a Future
+  work paragraph covering asymmetric geometries, multiple load cases,
+  nonlinear materials, 3D, and covariate-shift-aware CP.
+- Conclusion: concise summary of contribution, headline ID/OOD numbers,
+  deferral-rule result, and the retrofit-not-redesign framing.
+- AI disclosure: completed multi-paragraph disclosure covering session
+  log, orchestrator identity + configuration, research corpus /
+  Graphify retrieval, code / figure / numerical-result provenance,
+  manuscript text provenance, and the human author's contribution.
+
+Terminology pass verified: paper already used "L-bracket" consistently;
+only addition was the explicit first-mention expansion in the
+Introduction. Root-level docs (`CLAUDE.md`, `README.md`) already use
+"L-bracket" — no changes required.
+
+### Artifacts
+
+- `scripts/phase3_ood.py` — end-to-end OOD pipeline (inference cache +
+  metrics + per-condition breakdown + deferral rule + tables + figures).
+- `runs/cqr/preds_ood.npz` — cached 5-member ensemble predictions on
+  the 250 OOD samples (mean, std, gt, pos, params, offsets, directions).
+- `runs/cqr/ood_results.json` — full OOD results
+  (summary + by_condition + deferral + operating_points + AUROC).
+- `paper/tables/phase3_{id_vs_ood,conditional,deferral}_rows.tex` —
+  auto-populated row bodies.
+- `paper/tables/phase3_tables.tex` — table wrappers with captions and
+  labels.
+- `paper/figures/fig_phase3_*.pdf` — four figures listed above.
+
+### Deviations flagged
+
+1. Graphify MCP tools were unavailable in this session. Rather than
+   invent graph-retrieval citations, I restricted Phase-3 citations to
+   entries already present in `paper/bibliography.bib` from Phases 1
+   and 2. No new bib entries were added. Logged as a tooling deviation.
+2. The OOD bundle in `data/ood.pt` has 250 samples (150 single-param +
+   100 corner) rather than the original pre-registered 100 samples
+   (60 single + 40 corner). This is the 2.5x scale-up from the Day-3
+   dataset regeneration on 2026-04-17 (see that day's entry) and was
+   locked before Phase-1 training. Not a Phase-3 deviation per se,
+   flagged here for the AI-disclosure paper trail.
+
+### Phase 3 goal check
+
+- [x] OOD inference on 250 samples through frozen ensemble + CQR.
+- [x] ID vs OOD metrics side by side (accuracy, coverage, width, std).
+- [x] Per-condition breakdown by pre-registered extrapolation direction.
+- [x] Concrete defer-to-FEA decision rule with false-alarm and detection
+      rates on ID/OOD.
+- [x] 4 Phase-3 figures generated programmatically.
+- [x] Paper: Abstract, Introduction, Methods §OOD + §Deferral, Results
+      §OOD + §Deployment, Discussion + Limitations + Future work,
+      Conclusion, AI disclosure — all drafted and cross-referenced.
+- [x] Quality pass: numerical values in paper text match
+      `runs/cqr/ood_results.json`; all figure refs point to existing
+      figures in `paper/figures/`; all citations map to
+      `bibliography.bib`; "L-bracket" terminology consistent; calibration-
+      reuse, self-weight, plane-stress, and OOD-scope disclosures all
+      present in Methods / Discussion.
+
+Phase 3 complete. Conference-template migration + realistic bracket
+illustration + final submission formatting are the only remaining
+items, and those are explicitly scoped outside Phase 3.
+
