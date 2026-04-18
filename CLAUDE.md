@@ -92,3 +92,37 @@ Every significant decision, deviation, result, and escalation gets logged to `ag
 - **Phase 2 (April 23):** + CQR + comparison, ~5pp draft.
 - **Phase 3 (April 26):** + OOD + deployment demo, ~8pp draft.
 - Offline April 27 – May 14. Submission May 14-15.
+
+## Model training conventions (locked 2026-04-18, Phase 1)
+
+- **Runtime helpers:** `src/models/runtime.py`. `load_bundle(path)` for the
+  `.pt` splits; `compute_stats_from_list` / `apply_stats_inplace` for input
+  normalization; `train_one(cfg, tr, va, progress=...)` for the training
+  loop with checkpointing; `eval_metrics(model, loader, device, eps_mpa=1)`
+  for per-node MAPE + peak MAPE + abs-error percentiles.
+- **Phase-1 architecture (locked):** MeshGraphNet encoder / L=5 processor /
+  decoder, H=128, Huber(δ=1 MPa), Adam lr 5e-4 cosine-decayed to 1e-5,
+  bs=8, patience 10–12 on val Huber. Baseline: 60 ep. Ensemble members:
+  45 ep. Defined as the default in `scripts/phase1_train.py`; change the
+  CLI args, not the runtime helpers.
+- **Batch size on RTX 4060 Laptop:** `bs=8` only. `bs=16` regressed to
+  ~10× per-step time despite fitting in VRAM — root cause not worth
+  chasing for Phase 2/3. If training time matters for future runs,
+  reduce epochs or model size, not batch size.
+- **Checkpoint locations.** Each run dir carries `best.pt`, `stats.pt`,
+  `cfg.json`, `history.json`, `val_metrics.json`. `best.pt` is
+  `{"model": state_dict, "cfg": RunCfg-as-dict}` — load via
+  `runtime.load_best(cfg_like, ckpt_path, device)`.
+- **Phase-1 trained artifacts (Phase 2 CQR consumes these directly):**
+  - `runs/baseline/best.pt` — single-model baseline.
+  - `runs/ensemble/stats.pt` — shared input-normalization stats.
+  - `runs/ensemble/seed{0,101,202,303,404}/best.pt` — the 5 Deep-Ensemble
+    members. Load the list with `[load_best(_, d/'best.pt', dev) for d
+    in [runs/ensemble/seed0, ...]]`.
+- **Test-set discipline.** `data/test.pt` is used only by
+  `scripts/phase1_eval.py` for the final frozen evaluation; no script
+  should ever call it during hyperparameter selection.
+  `data/ood.pt` stays untouched until Phase 3.
+- **HP-sweep CLI.** `scripts/phase1_hp_sweep.py --base runs/baseline
+  --epochs N` runs the remaining grid points and ranks by val per-node
+  MAPE. Outputs `summary.json` + `winner.json` at `runs/hp_sweep/`.

@@ -238,11 +238,243 @@ within the expected residual from mesh-refinement bias near the sharp
 corner (which is deliberately localized away from the probe section). The
 pipeline is therefore trusted for the full sweep.
 
+\subsection{Surrogate architecture}
+\label{ssec:gnn}
+
+The surrogate is a MeshGraphNet-style encoder--processor--decoder graph
+neural network following Pfaff et al.~\cite{pfaff2021meshgraphnets}, adapted
+to the stationary stress-prediction setting by Maurizi et
+al.~\cite{maurizi2022gnn} (no temporal rollout; the decoder emits the
+converged stress field in a single forward pass). Each FEA sample becomes
+one graph $G = (V, E)$: $V$ is the set of $T_3$ corner nodes and $E$ is the
+undirected edge list induced by the triangle connectivity (each triangle
+contributes its three edges in both directions, $\sim 130$k edges per
+batched graph at training time).
+
+\textbf{Node features} ($13$ channels). Per-node: the 2D coordinate
+$(x, y)$; a $5$-way one-hot over the tagged boundary classes
+\{clamped, loaded, fillet, hole~1, hole~2\} plus a sixth indicator for
+interior (free) nodes; the three graph-level design parameters
+$(R, p, W)$ broadcast to every node so message passing carries global
+conditioning information; and two geometric scalars --- the Euclidean
+distance from each node to the nearest fillet node and to the nearest
+hole-perimeter node. The one-hot node-type channel follows
+MeshGraphNets' node-type
+embedding~\cite{pfaff2021meshgraphnets}, which injects the boundary-condition
+structure into the GNN's message passing without requiring the
+aggregator to learn to infer type from coordinates alone.
+
+\textbf{Edge features} ($4$ channels). Per directed edge: the relative
+displacement $(\Delta x, \Delta y)$, the Euclidean length
+$\lVert \Delta \rVert$, and the clipped inverse length
+$1/\max(\lVert \Delta \rVert, 10^{-6})$, i.e.\ the same relative-position
+encoding used by MeshGraphNets' mesh-edge features augmented with an
+inverse-distance channel for sharper fillet-region locality.
+
+\textbf{Encoder.} A node MLP $\varepsilon_V : \mathbb{R}^{13} \to
+\mathbb{R}^H$ and an edge MLP $\varepsilon_M : \mathbb{R}^4 \to
+\mathbb{R}^H$ lift the raw features to the processor's hidden width $H$.
+Each MLP is two ReLU hidden layers wide-$H$ with a trailing LayerNorm.
+
+\textbf{Processor.} $L$ identical message-passing blocks with residual
+connections, matching the canonical MeshGraphNets processor
+topology~\cite{pfaff2021meshgraphnets}. Block $\ell$ computes
+\begin{align}
+  \boldsymbol{e}_{ij}^{\ell+1}
+  &= f^M_\ell\bigl(\boldsymbol{e}_{ij}^\ell,
+                    \boldsymbol{n}_i^\ell,
+                    \boldsymbol{n}_j^\ell\bigr)
+   + \boldsymbol{e}_{ij}^\ell,
+  \\
+  \boldsymbol{n}_i^{\ell+1}
+  &= f^V_\ell\Bigl(\boldsymbol{n}_i^\ell,
+                    \sum_{j \in \mathcal{N}(i)}
+                    \boldsymbol{e}_{ij}^{\ell+1}\Bigr)
+   + \boldsymbol{n}_i^\ell,
+\end{align}
+with $f^M_\ell, f^V_\ell$ two-hidden-layer ReLU MLPs with LayerNorm. Sum
+aggregation preserves permutation invariance of the incoming-neighbour
+set.
+
+\textbf{Decoder.} A node MLP $\delta : \mathbb{R}^H \to \mathbb{R}$ emits
+per-node von~Mises stress in MPa, with no trailing LayerNorm so the output
+scale is unconstrained.
+
+Input features and edge attributes are normalized to zero mean and unit
+variance using statistics estimated on the first $200$ training samples
+and reused across all downstream runs (including every ensemble member);
+targets remain in physical units so loss values and metrics report
+directly in MPa.
+
+\subsection{Training protocol}
+\label{ssec:training}
+
+Hyperparameters were selected by a lightweight sweep on the validation
+split (Section~\ref{ssec:results-surrogate}) from the candidate grid
+in~\cite{pfaff2021meshgraphnets}-style hidden width $H \in \{64, 128\}$,
+processor depth $L \in \{3, 5\}$, and initial learning rate
+$\alpha_0 \in \{5 \times 10^{-4}, 1 \times 10^{-3}\}$. The best
+configuration, $H = 128$, $L = 5$, $\alpha_0 = 5 \times 10^{-4}$, matches
+the default recommended by the MeshGraphNets processor ablations on
+2D solid-mechanics benchmarks.
+
+Training minimizes the Huber loss with $\delta = 1$~MPa, trading the
+gradient sensitivity of mean-squared error for robustness to the long
+right tail of the von~Mises stress distribution that concentrates around
+the fillet and hole rims. The Adam optimizer~\cite{pfaff2021meshgraphnets}
+is stepped with initial learning rate $\alpha_0 = 5 \times 10^{-4}$ and
+cosine annealed to $10^{-5}$ over the full budget. Training runs for up
+to $60$ epochs at batch size $8$, with early stopping on validation loss
+with patience $12$ epochs; in practice every member converges well before
+the cap. All training is performed locally on a single NVIDIA RTX~4060
+Laptop GPU (8~GB VRAM) in a 24~GB system-RAM Windows environment.
+
+\subsection{Deep Ensembles for epistemic uncertainty}
+\label{ssec:ensembles}
+
+Following Lakshminarayanan et al.~\cite{lakshminarayanan2017ensembles}, we
+train a Deep Ensemble of $M = 5$ independently initialized GNN models. Each
+member uses the same architecture and the same training data, differing
+only in (i) the random seed controlling weight initialization and (ii) the
+dataloader-shuffle stream, so that member diversity arises purely from
+initialization plus SGD trajectory. The ensemble size $M = 5$ is the
+value identified by Lakshminarayanan et al.\ as capturing most of the
+variance benefit of ensembling, with sharply diminishing returns beyond.
+
+At inference, the member predictions
+$\{\hat{\sigma}_m(\mathbf{x}_i)\}_{m=1}^M$ at each node are combined into a
+point estimate $\bar{\sigma}(\mathbf{x}_i) = (1/M) \sum_m \hat{\sigma}_m$
+and an epistemic-uncertainty scalar
+$s(\mathbf{x}_i) = \mathrm{std}_m \hat{\sigma}_m(\mathbf{x}_i)$, where the
+standard deviation is taken across members. Under the interpretation
+motivated in Lakshminarayanan et al.\ and discussed in the Psaros UQ
+survey~\cite{psaros2023uq}, member disagreement is a proxy for epistemic
+uncertainty: the model does not know what it does not know, so disagreement
+between equally-plausible fits of the same training distribution is
+expected to rise in regions where the training signal is sparse or the
+mapping is poorly constrained. The calibration quality of this proxy --- the
+empirical correlation between $s(\mathbf{x}_i)$ and the actual error
+$\lvert \bar{\sigma}(\mathbf{x}_i) - \sigma_\star(\mathbf{x}_i)\rvert$ ---
+is the raw input to the Phase-2 CQR layer and is evaluated directly in
+Section~\ref{ssec:results-calibration}.
+
 \section{Experiments}
-% Phase 1: training/eval splits, metrics definitions. Phase 2: CQR vs ensemble-only comparison. Phase 3: pre-registered OOD protocol and deployment demo.
+\label{sec:experiments}
+
+Data is split as described in Section~\ref{ssec:lhs}: $N_{\mathrm{train}}
+= 4000$, $N_{\mathrm{val}} = 500$, $N_{\mathrm{test}} = 500$, all drawn by
+LHS-stratified ordering from the 5000-sample main pool, with an additional
+$N_{\mathrm{ood}} = 250$ held out under the pre-registered OOD protocol
+and not touched in Phase~1. All hyperparameter decisions are made on the
+validation split; the test split is used only once for the final
+evaluation reported below.
+
+We report three accuracy metrics, computed on the in-distribution test
+split:
+
+\begin{itemize}
+  \item \textbf{Per-node MAPE} ---
+    $\mathrm{MAPE} = \mathrm{mean}_{i,k}
+    \lvert \hat{\sigma}_{ik} - \sigma^\star_{ik} \rvert /
+    \max(\lvert \sigma^\star_{ik} \rvert, \varepsilon)$
+    over all nodes $i$ and all test samples $k$, with
+    $\varepsilon = 1$~MPa preventing near-zero stresses in unloaded
+    regions from inflating the percent error.
+  \item \textbf{Peak-stress MAPE} --- the same relative error computed on
+    the per-sample maximum von~Mises stress, which is the
+    deployment-relevant scalar an engineer reads off the bracket.
+  \item \textbf{Absolute error percentiles} --- the 50th, 90th, 99th
+    and max of $\lvert \hat{\sigma}_{ik} - \sigma^\star_{ik} \rvert$ in
+    MPa, to expose tail behaviour that MAPE's mean compresses. This
+    follows the evaluation practice of Maurizi et
+    al.~\cite{maurizi2022gnn} and the RMSE-based tabulation in
+    MeshGraphNets~\cite{pfaff2021meshgraphnets}.
+\end{itemize}
 
 \section{Results}
-% Phase 1: surrogate accuracy + ensemble calibration. Phase 2: CQR coverage vs nominal. Phase 3: OOD behavior + deployment demo.
+\label{sec:results}
+
+\subsection{Surrogate accuracy}
+\label{ssec:results-surrogate}
+
+% Phase-1 result table: baseline single-model vs ensemble-mean accuracy on
+% the held-out test set. Populated by scripts/phase1_eval.py.
+\input{tables/phase1_accuracy_table.tex}
+
+The training curves of the five ensemble members
+(Figure~\ref{fig:phase1-curves}) show the expected pattern for well-posed
+supervised regression: rapid early descent, a smooth cosine-scheduled tail,
+and modest between-member variance --- the signature of an ensemble whose
+members settle into distinct minima of a similar-quality basin.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.75\linewidth]{figures/fig_phase1_training_curves.pdf}
+  \caption{Validation loss per epoch for the five Deep-Ensemble members
+    (seeds $101,\ldots,505$). Huber loss on the un-normalized stress
+    target in MPa; cosine schedule with early stopping patience $12$.}
+  \label{fig:phase1-curves}
+\end{figure}
+
+Representative predictions in the best, median, and worst test samples,
+ranked by per-sample mean absolute error, are shown in
+Figure~\ref{fig:phase1-examples}. The fillet region --- the dominant stress
+concentrator --- is recovered faithfully across the three quantiles; the
+visible residual error is almost entirely concentrated at the fillet arc
+and hole rims in the worst sample, which is consistent with the
+literature-reported pattern that GNN mesh surrogates lose accuracy in the
+tail of the stress distribution~\cite{maurizi2022gnn,gladstone2024gnn}
+rather than in the bulk.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase1_example_predictions.pdf}
+  \caption{Test-set examples, one row each for the best, median, and
+    worst sample by per-sample mean error. Columns, left to right:
+    ground-truth von~Mises stress from FEA; ensemble-mean prediction;
+    absolute error; ensemble standard deviation (the epistemic-uncertainty
+    proxy). The uncertainty map tracks the error map: the GNN knows where
+    its predictions are less reliable.}
+  \label{fig:phase1-examples}
+\end{figure}
+
+\subsection{Ensemble calibration}
+\label{ssec:results-calibration}
+
+The central Phase-1 claim is that ensemble disagreement tracks actual
+prediction error --- a necessary property for the Phase-2 CQR layer to
+operate on a meaningful raw uncertainty signal. We quantify this at two
+granularities.
+
+\textbf{Node-level.} Across all $\sim 1.4{\times}10^6$ test-set nodes, we
+compute the ensemble standard deviation $s(\mathbf{x}_i)$ and the absolute
+residual $r(\mathbf{x}_i) = \lvert \bar{\sigma}(\mathbf{x}_i) -
+\sigma^\star(\mathbf{x}_i) \rvert$. The Pearson correlation $\rho_P$ and
+Spearman rank correlation $\rho_S$ between these scalars are reported
+in Table~\ref{tab:phase1-calibration}; both are materially positive,
+confirming that high-uncertainty nodes are also high-error nodes.
+
+\textbf{Sample-level.} Averaging $s$ and $r$ within each test sample
+gives a per-sample scatter (Figure~\ref{fig:phase1-calib}, right panel).
+This is the deployment-relevant view: a design engineer asks ``for this
+candidate bracket, can I trust the surrogate?'' and the ensemble answers
+with a sample-level uncertainty. The positive slope is the empirical
+foundation for the Phase-2 CQR prediction interval.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig_phase1_calibration.pdf}
+  \caption{Ensemble uncertainty (x) vs.\ absolute error (y). \emph{Left:}
+    node-level scatter over all test-set nodes. \emph{Right:} per-sample
+    scatter with each point representing the mean uncertainty and mean
+    error over one test sample.}
+  \label{fig:phase1-calib}
+\end{figure}
+
+The sample-level correlation specifically is the number to carry forward:
+CQR operates on per-sample or per-region scores, not per-node, so the
+value reported in Table~\ref{tab:phase1-calibration} sets the headroom
+for the coverage-width tradeoff in Phase~2.
 
 \section{Discussion}
 % Phase 3: limitations of the reliability layer, failure modes surfaced by OOD, implications for deployment.

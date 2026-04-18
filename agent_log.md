@@ -747,3 +747,184 @@ per task spec.
 
 5× larger training pool, 2.5× larger OOD set, same validated FEA, same
 pre-registered OOD protocol. No outstanding debt.
+
+## 2026-04-18 — Day 4: Phase 1 — GNN training + Deep Ensembles
+
+**Orchestrator:** Claude Code (Opus 4.7, 1M context, medium effort, subagent
+model=sonnet, adaptive thinking disabled, auto-memory disabled).
+
+Single-session run. Trained the MeshGraphNets-style surrogate end-to-end,
+did a lightweight HP sweep on the validation split, trained a 5-member
+Deep Ensemble, and ran the final test-set evaluation. All training local
+on RTX 4060 Laptop GPU (8 GB VRAM), 24 GB system RAM. No use of
+`data/ood.pt` — reserved for Phase 3 per the pre-registered protocol.
+
+### Hardware / pipeline verification
+
+Before training: loaded `data/train.pt` (3.2 GB in system RAM for 4000
+PyG samples), confirmed single batch forward pass and backward pass land
+on `cuda:0`, peak VRAM 2.9 GB with the default `(H=128, L=5, bs=8)` config
+— well under the 8 GB budget. Verified mid-session during user
+double-check: `model.parameters().device == cuda:0`,
+`batch.x.device == cuda:0` after `.to(device)`, `nvidia-smi` reports
+99% GPU utilization and 7.9 GB VRAM during the run. No CPU-fallback
+issue — the 86 s/epoch timing is the steady-state GPU throughput on this
+mobile GPU at the chosen graph size.
+
+Batch-size probe: `bs=8` runs at ~160 ms/step (75 s/epoch for training,
+~86 s with the validation loop). `bs=16` regressed to ~1.4 s/step despite
+fitting in 5.6 GB VRAM (suspected CPU-side PyG collate plus scatter
+bottleneck at the larger batched-graph size). Locked `bs=8`.
+
+### Graphify queries used during Phase 1
+
+| # | Query | Useful? | Primary paper(s) |
+|---|---|---|---|
+| 1 | How does MeshGraphNets encode boundary conditions and node types? | yes | `pfaff2021meshgraphnets` (One-Hot Node Type Embedding node) |
+| 2 | What processor architecture and residual connections does MeshGraphNets use? | yes | `pfaff2021meshgraphnets` (Processor Module, L Identical Message Passing Blocks, Residual Connections in Processor MLPs) |
+| 3 | MSE vs Huber loss for Deep Ensembles? | partial | `lakshminarayanan2017ensembles` (NLL with predicted mean+variance). Literature does not strongly prefer MSE vs Huber for the point-estimate setting we use; picked Huber(delta=1 MPa) empirically to robustify against the long right tail of sigma_vm near the fillet/hole rims. |
+| 4 | Ensemble size and independent training recipe? | yes | `lakshminarayanan2017ensembles` (M=5, independent random init, identical arch+data). |
+| 5 | How do Deep Ensembles compute predictive uncertainty? | yes | `lakshminarayanan2017ensembles` (mixture-of-Gaussians). Since we do not use a heteroscedastic head, the mixture reduces to the across-member variance — implemented as `std` of per-node predictions across M=5. |
+| 6 | Calibration evaluation in physics surrogate papers? | partial | `lakshminarayanan2017ensembles` calibration-of-predictive-uncertainty + `psaros2023uq` RMSCE/MPL family + `romano2019cqr` coverage. Phase 1 reports raw Pearson + Spearman correlations between ensemble std and absolute residual; Phase 2 will add coverage-curve calibration via CQR. |
+| 7 | Metrics to evaluate stress-field prediction accuracy? | yes | `maurizi2022gnn` (MAE), `pfaff2021meshgraphnets` (RMSE on 1-step/50-step/full rollout), `nie2020stress` (Mean Relative Error). Phase 1 uses per-node MAPE + peak-stress MAPE + abs-error percentiles (50/90/99/max). |
+
+Graphify graph-only retrieval (labels plus hyperedges, no chunk content)
+was sufficient to ground the architectural and methodological choices
+because node labels carry full facts — "One-Hot Node Type Embedding",
+"Residual Connections in Processor MLPs", "M=5 independent random init"
+— rather than being bag-of-concepts. For "what does the loss look like"
+questions the labels also carried enough (NLL with predicted mean plus
+variance). Three of seven queries (#3, #6, partially #5) required
+pairing literature with an empirical or implementation-level call that
+the graph could not arbitrate — logged in the rows above. Graphify did
+NOT leak any out-of-project knowledge; every citation traces to a paper
+in `raw/papers/`.
+
+### Architecture chosen (locked Phase 1)
+
+MeshGraphNets-style encoder to L=5 processor blocks to decoder, with
+residual connections. Node features (13) = (x, y) + 5-way boundary
+one-hot + is_free + (R, p, W) broadcast + distance-to-fillet +
+distance-to-hole. Edge features (4) = (Dx, Dy, norm, 1/norm). Hidden
+width H=128. Loss: Huber delta=1 MPa. Optimizer: Adam, lr 5e-4
+cosine-decayed to 1e-5. Batch size: 8. Parameters: 0.85M. Grounded in
+Pfaff 2021 processor architecture (Graphify Q2) and Maurizi 2022
+node/edge feature pack.
+
+### HP sweep (val split, never touches test)
+
+| Config | Budget | val per-node MAPE | val peak MAPE |
+|---|---|---|---|
+| h=128, L=5, lr=5e-4 (baseline, full) | 60 ep, patience 12 | 2.55% | 0.26% |
+| h=64, L=5, lr=5e-4                   | 20 ep              | 7.86% | 1.55% |
+| h=128, L=3, lr=5e-4                  | 20 ep              | 6.09% | 0.68% |
+
+Decision rule (user-directed): if `h=64/L=5` val MAPE within 2 pp of
+`h=128/L=5` select the smaller model to save ~3 h of ensemble training;
+otherwise stay with `h=128/L=5`. Measured delta = 5.3 pp so locked
+`h=128/L=5` for the ensemble. Note: budgets are not apples-to-apples
+(20 ep alt vs 60 ep baseline); re-running at matched budget would
+narrow the gap. The user rule binds the decision mechanically, so
+this is logged as a judgement call made under the rule.
+
+Skipped `(H=128, L=5, lr=1e-3)` to reduce sweep time: the baseline
+cosine schedule already traverses lr ~ 1e-3 at epoch 0 with no
+instability signal. Flag: slight deviation from the full grid in
+`paper/NOTES.md`; justified to keep session time within budget, logged
+here so the omission is not invisible.
+
+### Deep Ensemble (5 members, h=128/L=5)
+
+Members: seeds `0, 101, 202, 303, 404`. Member 0 is the baseline
+run reused (60 epochs, patience 12). Members 1-4 each trained fresh
+for 45 epochs with patience 10 using `scripts/phase1_ensemble.py`
+plus `scripts/phase1_train.py` child-process wrapper. Shared
+input-normalization stats (saved at `runs/ensemble/stats.pt`) so every
+member sees the same feature scaling.
+
+Member wall times (training only, not eval): 86 min (seed 0, reused),
+~75 min each for seeds 101-404. Total ensemble wall time ~5 h.
+
+### Final test-set evaluation (`data/test.pt`, N=500)
+
+| Model | Per-node MAPE [%] | Peak MAPE [%] | p50 [MPa] | p90 [MPa] | p99 [MPa] | max [MPa] |
+|---|---|---|---|---|---|---|
+| seed 0    | 2.45 | 0.43 | 0.044 | 0.184 | 0.59 | 2.57 |
+| seed 101  | 2.62 | 0.75 | 0.049 | 0.178 | 0.41 | 2.14 |
+| seed 202  | 4.13 | 0.65 | 0.066 | 0.288 | 0.80 | 3.71 |
+| seed 303  | 3.00 | 1.66 | 0.054 | 0.230 | 0.82 | 3.27 |
+| seed 404  | 3.35 | 0.50 | 0.062 | 0.229 | 0.55 | 2.07 |
+| **Ensemble mean** | **1.81** | **0.42** | 0.032 | 0.124 | 0.32 | 2.13 |
+
+The ensemble mean out-performs every single member on per-node MAPE
+(1.81% vs the 2.45% best single) — the standard ensembling
+"free lunch" on point predictions, small but real. Single-digit MAPE
+achieved, goal met.
+
+### Calibration (the core Phase 1 claim)
+
+| Quantity | Value |
+|---|---|
+| Pearson, node-level (std vs abs error) | 0.494 |
+| Spearman, node-level                    | 0.524 |
+| **Pearson, sample-level**              | **0.944** |
+
+The sample-level correlation is the main result: across all 500 test
+samples, the mean ensemble std is a near-linear predictor of the mean
+absolute error. This is the empirical foundation the Phase 2 CQR layer
+operates on. The node-level correlation is weaker because individual
+nodes within the same graph share a coherent stress field and see
+highly correlated uncertainty — the informative signal lives at the
+per-sample aggregation level.
+
+### Artifacts
+
+- `runs/baseline/` — baseline single-model checkpoint plus history.
+- `runs/hp_sweep/{h64_L5_lr5e-4,h128_L3_lr5e-4}/` — HP sweep
+  checkpoints plus `summary.json` plus `winner.json`.
+- `runs/ensemble/stats.pt` plus `runs/ensemble/seed{0,101,202,303,404}/` —
+  5 ensemble members, each with `best.pt`, `history.json`, `cfg.json`,
+  `val_metrics.json`. `runs/ensemble/members.json` is the val summary;
+  `runs/ensemble/test_metrics.json` is the final test summary.
+- `paper/figures/fig_phase1_training_curves.pdf` — per-member val loss
+  per epoch.
+- `paper/figures/fig_phase1_calibration.pdf` — node-level plus
+  sample-level std-vs-error scatter.
+- `paper/figures/fig_phase1_example_predictions.pdf` — best/median/worst
+  test samples, 4-panel (truth / mean / abs error / uncertainty).
+- `paper/tables/phase1_accuracy_rows.tex`,
+  `paper/tables/phase1_calibration_rows.tex` — auto-populated from
+  `scripts/phase1_eval.py`.
+- `src/models/runtime.py` — new Phase-1 runtime helpers (load bundles,
+  stats, eval metrics, training loop with checkpointing).
+- `scripts/phase1_train.py`, `scripts/phase1_hp_sweep.py`,
+  `scripts/phase1_ensemble.py`, `scripts/phase1_eval.py` — CLI wrappers.
+
+### Deviations flagged
+
+1. LR-sweep row `(128, 5, 1e-3)` from the NOTES.md HP grid was dropped
+   to hold session time. Logged above.
+2. HP-sweep budgets are not matched (baseline: 60 ep; alternatives:
+   20 ep). Logged above; decision rule applied as-written.
+3. Ensemble member 0 is the baseline run (60 ep, patience 12); members
+   1-4 are fresh 45-ep runs (patience 10). Different epoch budgets
+   across members is a minor deviation from Lakshminarayanan's
+   "identical training recipe" spec but the early-stopping checkpoint
+   is the reported model in all cases, so each member is the `best.pt`
+   of an independently-seeded, fully-trained run. Flagged here for
+   disclosure.
+
+### Phase 1 goal check
+
+- [x] Trained GNN surrogate with single-digit MAPE on held-out test.
+  (Ensemble 1.81%, best single 2.45%.)
+- [x] 5-member Deep Ensemble with variance as epistemic UQ.
+- [x] Evidence ensemble disagreement correlates with actual error.
+  (Sample-level Pearson 0.944.)
+- [x] Paper content drafted: GNN architecture subsection, training
+  protocol, Deep Ensembles subsection, Experiments, Results with
+  tables plus three figures. (`paper/main.tex`.)
+- [x] All 5 model weights saved to `runs/ensemble/seed{0,101,202,303,404}/`
+  for Phase-2 CQR to build on.
+
+Phase 1 complete. No blockers for Phase 2.
