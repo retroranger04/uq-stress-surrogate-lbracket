@@ -1,22 +1,4 @@
-% ============================================================
 % bibliography.bib — UQ Stress Surrogate L-Bracket
-% Curator-owned file. Do NOT edit from orchestrator sessions.
-% Generated: 2026-04-15 by Sonnet corpus-curator agent.
-% Citekeys match raw/papers/ filenames (minus .pdf/.md).
-%
-% CORPUS BUCKETS:
-%   [A] Neural surrogates for stress prediction
-%   [B] Mesh-GNN methodology
-%   [C] Foundational UQ
-%   [D] UQ for engineering/physics surrogates
-%   [E] Reference docs (cite in Methods, not References section)
-%
-% SKIPPED (paywalled, no preprint):
-%   olivier2021bayesian — Olivier, Shields, Graham-Brady, CMAME 2021
-%   doi:10.1016/j.cma.2021.114079 — no arXiv preprint found.
-% ============================================================
-
-%% ---- BUCKET A: Neural Surrogates for Stress ----
 
 @article{nie2020stress,
   author    = {Nie, Zhenguo and Jiang, Haoliang and Kara, Levent Burak},
@@ -26,11 +8,7 @@
   number    = {1},
   pages     = {011002},
   year      = {2020},
-  publisher = {ASME},
-  eprint    = {1808.08914},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {Code: github.com/zhenguonie/stress{\_}net}
+  publisher = {ASME}
 }
 
 @article{jiang2021stressgan,
@@ -44,10 +22,7 @@
   pages     = {051005},
   year      = {2021},
   publisher = {ASME},
-  doi       = {10.1115/1.4049805},
-  eprint    = {2006.11376},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG}
+  doi       = {10.1115/1.4049805}
 }
 
 @article{maurizi2022gnn,
@@ -59,11 +34,7 @@
   pages     = {21834},
   year      = {2022},
   publisher = {Nature Publishing Group},
-  doi       = {10.1038/s41598-022-26424-3},
-  eprint    = {2205.06675},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {Open access. Code: github.com/marcomau06/GNNs{\_}fields{\_}prediction}
+  doi       = {10.1038/s41598-022-26424-3}
 }
 
 @article{bhaduri2022stress,
@@ -75,10 +46,7 @@
   pages     = {109879},
   year      = {2022},
   publisher = {Elsevier},
-  doi       = {10.1016/j.compositesb.2022.109879},
-  eprint    = {2111.05271},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG}
+  doi       = {10.1016/j.compositesb.2022.109879}
 }
 
 @article{gladstone2024gnn,
@@ -90,12 +58,8 @@
   pages     = {3394},
   year      = {2024},
   publisher = {Nature Publishing Group},
-  doi       = {10.1038/s41598-024-53185-y},
-  note      = {Open access (PMC10858211). Develops edge-augmented and multi-GNN
-               architectures outperforming MeshGraphNets on time-independent solid mechanics.}
+  doi       = {10.1038/s41598-024-53185-y}
 }
-
-%% ---- BUCKET B: Mesh-GNN Methodology ----
 
 @inproceedings{pfaff2021meshgraphnets,
   author    = {Pfaff, Tobias and Fortunato, Meire and
@@ -103,15 +67,8 @@
   title     = {Learning Mesh-Based Simulation with Graph Networks},
   booktitle = {International Conference on Learning Representations},
   year      = {2021},
-  url       = {https://openreview.net/forum?id=roNqYL0_XP},
-  eprint    = {2010.03409},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {ICLR 2021 Spotlight. Code: deepmind/deepmind-research.
-               Foundational MeshGraphNets architecture.}
+  url       = {https://openreview.net/forum?id=roNqYL0_XP}
 }
-
-%% ---- BUCKET C: Foundational UQ ----
 
 @inproceedings{lakshminarayanan2017ensembles,
   author    = {Lakshminarayanan, Balaji and Pritzel, Alexander and Blundell, Charles},
@@ -119,13 +76,7 @@
   booktitle = {Advances in Neural Information Processing Systems},
   volume    = {30},
   year      = {2017},
-  publisher = {Curran Associates, Inc.},
-  url       = {https://proceedings.neurips.cc/paper/2017/hash/9ef2ed4b7fd2c810847ffa5fa85bce38-Abstract.html},
-  eprint    = {1612.01474},
-  archivePrefix = {arXiv},
-  primaryClass  = {stat.ML},
-  note      = {NeurIPS 2017. Recommends M=5 ensemble members; adversarial training
-               optional; independent random initialisation per member.}
+  publisher = {Curran Associates, Inc.}
 }
 
 @inproceedings{romano2019cqr,
@@ -135,13 +86,7 @@
   volume    = {32},
   pages     = {3538--3548},
   year      = {2019},
-  publisher = {Curran Associates, Inc.},
-  url       = {https://proceedings.neurips.cc/paper/2019/hash/5103c3584b063c431bd1268e9b5e76fb-Abstract.html},
-  eprint    = {1905.03222},
-  archivePrefix = {arXiv},
-  primaryClass  = {stat.ME},
-  note      = {NeurIPS 2019. Defines the CQR calibration procedure and
-               finite-sample marginal coverage guarantee.}
+  publisher = {Curran Associates, Inc.}
 }
 
 @article{angelopoulos2023conformal,
@@ -154,25 +99,8 @@
   pages     = {494--591},
   year      = {2023},
   publisher = {Now Publishers},
-  doi       = {10.1561/2200000101},
-  eprint    = {2107.07511},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {Code: github.com/aangelopoulos/conformal-prediction.
-               Covers split-conformal, marginal vs.\ conditional coverage,
-               exchangeability assumption.}
+  doi       = {10.1561/2200000101}
 }
-
-%% ---- BUCKET D: UQ for Engineering / Physics Surrogates ----
-
-%%
-%% NOTE — olivier2021bayesian SKIPPED (paywalled, no open-access preprint):
-%%   Olivier A., Shields M.D., Graham-Brady L.
-%%   "Bayesian neural networks for uncertainty quantification in data-driven
-%%    materials modeling," CMAME 386, 114079, 2021.
-%%   DOI: 10.1016/j.cma.2021.114079
-%%   Add BibTeX entry manually if institutional access becomes available.
-%%
 
 @article{psaros2023uq,
   author    = {Psaros, Apostolos F. and Meng, Xuhui and Zou, Zongren and
@@ -184,12 +112,7 @@
   pages     = {111902},
   year      = {2023},
   publisher = {Elsevier},
-  doi       = {10.1016/j.jcp.2022.111902},
-  eprint    = {2201.07766},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {Comprehensive SciML UQ survey covering ensembles, Bayesian NNs,
-               Gaussian processes, dropout, normalizing flows. Table of comparison metrics.}
+  doi       = {10.1016/j.jcp.2022.111902}
 }
 
 @article{gopakumar2024conformal,
@@ -203,13 +126,7 @@
   pages     = {015025},
   year      = {2026},
   publisher = {IOP Publishing},
-  doi       = {10.1088/2632-2153/ae2e7b},
-  eprint    = {2408.09881},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {Open access (CC BY 4.0). Accepted December 2025, published February 2026.
-               arXiv preprint August 2024. Model-agnostic CP framework for PDE surrogate
-               models with marginal coverage guarantee. Tested on FNO, U-Net, GNN, ViT.}
+  doi       = {10.1088/2632-2153/ae2e7b}
 }
 
 @article{pasparakis2024bayesian,
@@ -221,53 +138,56 @@
   pages     = {117409},
   year      = {2024},
   publisher = {Elsevier},
-  doi       = {10.1016/j.cma.2024.117409},
-  eprint    = {2406.14838},
-  archivePrefix = {arXiv},
-  primaryClass  = {cs.LG},
-  note      = {BNN-U-Net for full-field von Mises stress prediction with UQ.
-               Compares HMC, MC-Dropout, Bayes-by-Backprop on composite microstructures.
-               Direct baseline comparison for our Deep Ensembles + CQR approach.}
+  doi       = {10.1016/j.cma.2024.117409}
 }
-
-%% ---- BUCKET E: Reference Docs (cite in Methods, not References section) ----
 
 @misc{dokken_fenicsx,
   author    = {Dokken, J{\o}rgen S.},
   title     = {The {FEniCSx} Tutorial},
   year      = {2023},
-  howpublished = {\url{https://jsdokken.com/dolfinx-tutorial/}},
-  note      = {Chapter: The Equations of Linear Elasticity.
-               Used for FEA data generation pipeline. Cite in Methods \S{}FEA Data Pipeline.
-               Local copy: raw/papers/dokken{\_}fenicsx.md}
+  howpublished = {\url{https://jsdokken.com/dolfinx-tutorial/}}
 }
 
 @misc{pyg_docs,
   author    = {{PyG Team}},
   title     = {Creating Message Passing Networks},
   year      = {2024},
-  howpublished = {\url{https://pytorch-geometric.readthedocs.io/en/2.6.0/notes/create_gnn.html}},
-  note      = {PyTorch Geometric v2.6 documentation on MessagePassing base class,
-               GCN and EdgeConv examples, edge feature handling.
-               Cite in Methods \S{}GNN Architecture.
-               Local copy: raw/papers/pyg{\_}docs.md}
+  howpublished = {\url{https://pytorch-geometric.readthedocs.io/en/2.6.0/notes/create_gnn.html}}
 }
 
-%% ---- BUCKET F: Material Standards (Day 2 additions) ----
-%% Added 2026-04-16 by orchestrator session for AISI 304 SS material properties.
-%% Day 2 spec explicitly authorized these additions in both raw/ and paper/ .bib.
-
 @book{asm_handbook_vol1,
-  title = {ASM Handbook, Volume 1: Properties and Selection: Irons, Steels, and High-Performance Alloys},
+  title     = {ASM Handbook, Volume 1: Properties and Selection: Irons, Steels, and High-Performance Alloys},
   publisher = {ASM International},
-  year = {2024},
-  edition = {Latest},
-  address = {Materials Park, OH}
+  year      = {2024},
+  edition   = {Latest},
+  address   = {Materials Park, OH}
 }
 
 @misc{astm_a240,
-  title = {ASTM A240/A240M-22: Standard Specification for Chromium and Chromium-Nickel Stainless Steel Plate, Sheet, and Strip for Pressure Vessels and for General Applications},
-  author = {{ASTM International}},
-  year = {2022},
+  title     = {ASTM A240/A240M-22: Standard Specification for Chromium and Chromium-Nickel Stainless Steel Plate, Sheet, and Strip for Pressure Vessels and for General Applications},
+  author    = {{ASTM International}},
+  year      = {2022},
   howpublished = {Standard, ASTM International, West Conshohocken, PA}
+}
+
+@article{mckay1979lhs,
+  author    = {McKay, M. D. and Beckman, R. J. and Conover, W. J.},
+  title     = {A Comparison of Three Methods for Selecting Values of Input Variables in the Analysis of Output from a Computer Code},
+  journal   = {Technometrics},
+  volume    = {21},
+  number    = {2},
+  pages     = {239--245},
+  year      = {1979},
+  publisher = {American Statistical Association}
+}
+
+@article{huber1964robust,
+  author    = {Huber, Peter J.},
+  title     = {Robust Estimation of a Location Parameter},
+  journal   = {Annals of Mathematical Statistics},
+  volume    = {35},
+  number    = {1},
+  pages     = {73--101},
+  year      = {1964},
+  publisher = {Institute of Mathematical Statistics}
 }

@@ -1250,3 +1250,241 @@ Phase 3 complete. Conference-template migration + realistic bracket
 illustration + final submission formatting are the only remaining
 items, and those are explicitly scoped outside Phase 3.
 
+
+
+---
+
+## 2026-04-19 — Template migration: CAISc 2026
+
+Migrated the paper draft from the generic `article` class into the
+CAISc 2026 conference template.
+
+**What changed.**
+- Copied `paper/template/caisc_2026.sty` into `paper/` so LaTeX finds it.
+- New entry point: `paper/caisc_main.tex`. `paper/main.tex` left
+  untouched as the generic-template reference version.
+- Preamble: `\usepackage{caisc_2026}` (default submission options —
+  anonymization + line numbers on), `\PassOptionsToPackage{numbers,
+  compress}{natbib}` before the style load.
+- Bibliography switched from `biblatex` (biber) to `natbib`
+  (`plainnat`, numeric). All 38 `\cite{}` calls converted to `\citep{}`;
+  the existing `~\cite{...}` placements are parenthetical in context so
+  `\citep` is the correct form. `\addbibresource`, `\printbibliography`
+  removed; `\bibliographystyle{plainnat}` + `\bibliography{bibliography}`
+  added. `bibliography.bib` unchanged (natbib-compatible entries).
+- Bracket illustration: replaced the `[L-bracket illustration pending]`
+  placeholder with `\includegraphics{figures/fig_bracket_photo.png}`.
+- Anonymization: author block uses the template's anonymous placeholder
+  (no names, affiliation, emails). No identifying strings remain
+  (grep for Arpit / Mathur / retroranger / Tata / Independent Researcher
+  over caisc_main.tex, tables, ai_disclosure → all clean). No GitHub
+  URLs present in the submission file.
+- AI Involvement Checklist filled in with honest, project-specific
+  answers sourced from this log: items 1 = B/Medium, 2 = C/High,
+  3 = B/Medium, 4 = C/Medium. Item 5 describes the three AI systems
+  used without naming specific products (chat LLM, command-line coding
+  agent, knowledge-graph literature tool, image-gen model). Item 6
+  documents the concrete limitations observed here: the 40–75× FEA
+  compute-time over-estimate that cost two days on remote infra;
+  the four consecutive Kaggle sweep failures; the knowledge-graph
+  tooling outage; numerical inconsistency across chat turns;
+  and over-claiming in first-draft writing.
+- Reproducibility & Responsibility Checklist filled in: Yes across
+  claims / limitations / theory / reproducibility / open access /
+  experimental details / statistical significance / compute
+  resources / research ethics; NA for broader impacts (methodology
+  paper on a synthetic structural-mechanics benchmark).
+
+**Not verified this session.**
+- Could not run `pdflatex` — no TeX distribution is installed in this
+  shell environment (git-bash MSYS, no MiKTeX / TeX Live on PATH).
+  Compilation, page-count check, and citation-resolution verification
+  need to run on a machine with pdflatex + bibtex. Static checks only:
+  all `\cite{}` converted (38 → `\citep{}`, 0 bare), anonymization
+  grep clean, figures referenced with `\label{fig:bracket_photo}`
+  preserved so `\ref{fig:bracket_photo}` still resolves, and all 14
+  `\includegraphics{...}` paths point to files that exist under
+  `paper/figures/`.
+- Expected page count is close to 8 based on the main.tex draft that
+  the migration came from; the CAISc style file has somewhat different
+  margins/leading than the generic `article` class, so the true page
+  count needs to be checked once pdflatex runs.
+
+**Next (on a machine with LaTeX).**
+1. Run `pdflatex caisc_main`, `bibtex caisc_main`, then `pdflatex`
+   twice more. Verify: no errors, all citations resolve, all figures
+   appear, line numbers visible, anonymous author block, footer reads
+   "Submitted to 1st Conference For AI Scientists (CAISc 2026).
+   Do not distribute."
+2. Check page count. If >8, compress verbose Methods passages or move
+   one of the less central tables (e.g. Phase-3 deferral per-condition)
+   to the technical appendix.
+
+---
+
+## 2026-04-19 — Paper compressed to CAISc 8-page limit + compile fixes (session #)
+
+Goal: CAISc 2026 migration compiled on target hardware and was 19+
+pages; needed to fit 8 content pages (Abstract through Conclusion),
+keep references and the two mandatory checklists separate, and put
+supporting material behind a technical appendix.
+
+**Compile infrastructure.**
+- MiKTeX 25.12 (pdfTeX 3.141592653 / LaTeX2e 2025-11-01) found at
+  `/c/Users/Arpit Mathur/AppData/Local/Programs/MiKTeX/miktex/bin/x64`;
+  pdflatex not on default `$PATH` in git-bash but reachable once
+  added. Full sequence runs cleanly.
+- Root cause of the `! Misplaced \noalign` cascade was not the
+  expected lineno + booktabs interaction — it was `\input{...}`
+  inside a tabular body disturbing the `\halign` template. Minimal
+  reproducers confirmed booktabs rules work fine with caisc_2026
+  and hyperref/amsmath; the explosion was triggered the moment an
+  `\input` appeared between `\midrule` and `\bottomrule`. Fixed by
+  inlining every `_rows.tex` into its table directly inside
+  `caisc_main.tex`; the table files under `paper/tables/` are left
+  in place but no longer referenced from the built document.
+- Final log: 0 errors, 0 `\noalign` errors, 17 total pages.
+
+**Compression plan executed.**
+- Main body (Abstract → Conclusion) fits on pages 1–7:
+  p1 title + abstract + intro, p2 related work + methods, p3
+  problem-setup table, p4 results + CQR coverage table,
+  p5 CQR coverage figure, p6 example-predictions figure + discussion,
+  p7 conclusion (+ references begin). References and both
+  checklists occupy pages 7–12 and do not count toward the limit.
+  Technical appendix occupies pages 13–17.
+- Figures kept in main text (4): bracket illustration,
+  phase-1 calibration scatter, phase-2 coverage diagonal,
+  phase-1 example predictions.
+- Tables kept in main text (3): problem setup (Table 1),
+  CQR coverage at 3 nominal levels (Table 2), ID vs OOD
+  comparison (Table 3).
+- Moved to appendix (figures): training curves, phase-2 interval
+  width, phase-2 intervals example, phase-2 vs phase-1 comparison,
+  phase-3 ID vs OOD bar chart, phase-3 OOD breakdown, phase-3 OOD
+  examples, phase-3 deferral ROC.
+- Moved to appendix (tables): mesh convergence, per-seed ensemble
+  metrics, full four-level CQR coverage sweep, phase-2 conditional
+  coverage by parameter quartile, phase-3 per-condition OOD
+  breakdown, phase-3 deferral operating points.
+- Cut entirely: the long justification prose around self-weight
+  omission, bolt-mechanics modelling, sharp outside corner,
+  Adam citation tail, and the redundant restatement of CQR
+  coverage numbers across sections. LHS/design-rejection details,
+  hyperparameter-sweep narrative, and the full sub-MPa discussion
+  of $\hat Q$ values were trimmed to single sentences.
+
+**Verification.**
+- pdflatex → bibtex → pdflatex → pdflatex runs with 0 errors.
+- All `\cite{}` resolve (no `?` marks in the PDF).
+- All 4 main-text figures render; all 8 appendix figures render.
+- Cross-references from main text to appendices
+  (`app:fea`, `app:perseed`, `app:cqr`, `app:ood`, `app:deferral`)
+  all resolve.
+- Both mandatory checklists intact with filled-in answers.
+- Footer reads the CAISc submission notice; author block is
+  anonymous; line numbers present (lineno + booktabs coexist
+  cleanly because the tabular `\input` no longer occurs).
+
+**Next.**
+- Human proofread for tone, trimming opportunities, and any
+  remaining over-claims on generality.
+- Final submission in the May 14–15 window.
+
+---
+
+## 2026-04-19 — Paper revision pass (fresh Opus instance)
+
+Full consolidated revision per blind-review feedback. All 11 prompt
+items executed in a single pass; no retraining.
+
+**Computations (no retraining):**
+- `scripts/phase_revision_ablations.py` loads frozen 5-member ensemble,
+  re-runs forward on val+test, and computes:
+  1. Vanilla split-conformal baseline — nonconformity score
+     $E_i = |\bar\sigma - y|$, symmetric constant-width interval.
+     Results: under-covers at every nominal level
+     (80% nominal → 68.7% empirical, 90% → 81.1%, 95% → 89.0%).
+     Written to `runs/cqr/vanilla_conformal_results.json`.
+  2. Ensemble-size ablation M ∈ {2,3,4,5}. Re-calibrates CQR per M.
+     Monotonic calibration improvement: M=2 cov 86.5%, M=3 88.4%,
+     M=4 90.4%, M=5 91.3%. Per-node MAPE best at M=5 (1.81%).
+     Written to `runs/ensemble/ablation_ensemble_size.json`.
+
+**Graphify query (Item 10):**
+- Asked about Gopakumar 2024 experimental setup. Graph confirms:
+  CP framework for spatio-temporal surrogate models; tests MLP, U-Net,
+  FNO, ViT, GNN architectures; focuses on neural-PDE solvers; uses
+  cell-wise calibration. Distinguishes from us: stationary structural
+  mechanics with mesh-native GNN on varying graphs; pre-registered OOD;
+  deferral rule; per-condition extrapolation audit.
+
+**Paper edits (all sections):**
+- Item 1a: canonical per-node MAPE 1.81% (from runs/ensemble/test_metrics.json
+  value 1.8082%) used everywhere — abstract, Table 3, Conclusion.
+- Item 1b: Appendix training-curves figure caption fixed
+  (seeds 0,101,202,303,404 not 101..505).
+- Item 1c: Reproducibility Item 8 updated to 5000-sample sweep,
+  ~50 minutes, + per-member training wall-time of 86 minutes.
+- Item 1d: Table 1 sampling row now "5000 in-distribution + 250 OOD".
+- Item 1e: Main text now says "four nominal levels" with main Table 2
+  as a representative three-level subset; Appendix C keeps the full
+  four-level sweep (80/85/90/95).
+- Item 1f: 17× vs 30× peak-MAPE multipliers each explicitly labelled
+  with what they compare (full OOD vs ID; corner-OOD vs ID).
+- Item 2a: Section 4.2 width-vs-error sentence now references
+  fig:phase1-calib with explicit note that CQR width inherits the
+  ensemble-std ranking (since $\hat Q$ is a constant offset).
+- Item 3a: Edge-feature listing expanded to 4 explicit items:
+  $(\Delta x, \Delta y)$, $\|\Delta\|$, $1/\|\Delta\|$.
+- Item 3b: Gaussian ansatz now has a one-sentence justification
+  (linear-elastic, smooth parameter dependence).
+- Item 3c: Cell-wise pooling defined in-line as a parenthetical.
+- Item 3d: Abstract now defines corner conditions as "multiple
+  parameters simultaneously outside the training range".
+- Item 3e: Peak-vs-per-node MAPE gap explained (low-stress nodes inflate
+  per-node percent-error; peak always at fillet → ensemble averaging
+  very efficient).
+- Item 4a: Softened "verified below 1%" claim to standard
+  screening-practice justifications with physical reasoning.
+- Item 4b: Softened "conservative margins absorb it" to an
+  acknowledgement of limited adaptation and disclosure.
+- Item 4c: Abstract now carries aggregate 34% OOD detection +
+  corner-OOD 58%, not only 58%.
+- Item 4d: Softened "arbitrarily mis-calibrated" to "in principle ...
+  differently calibrated".
+- Item 5: Pre-registration footnote added to Section 3.4.
+- Item 6: Geometry schematic inserted as Figure 2 (fig:geometry_schematic);
+  all subsequent figures auto-renumber via LaTeX \ref{} labels.
+- Item 7a: AI Involvement Item 5 now correctly says "Four AI systems".
+- Item 7b: Reproducibility Item 5 rewritten to disclose that the
+  anonymized submission does not ship a supplementary archive;
+  repository + seeds documented in the paper to enable reimplementation.
+- Item 7c: Reproducibility Item 8 now includes per-member training time.
+- Item 8: New appendix \ref{app:vanilla} with
+  Table \ref{tab:vanilla-vs-cqr} comparing vanilla split-conformal
+  vs CQR. Main-text Section 4.2 references this as the baseline.
+- Item 9: New appendix \ref{app:ensemble-ablation} with
+  Table \ref{tab:ensemble-ablation} for M ∈ {2,3,4,5} ablation.
+  Section 4.1 now cites this appendix.
+- Item 10: Introduction Contribution paragraph + Related Work now
+  articulate the Gopakumar differentiation along three axes (setting,
+  pre-registration+deferral rule, per-condition OOD audit).
+- Item 11: Pearson 0.944 CQR-width parenthetical added — makes
+  explicit that width-vs-error correlation is inherited from the
+  ensemble-std signal, not a second independent finding.
+
+**Compilation.**
+- pdflatex → bibtex → pdflatex → pdflatex.
+- Zero errors. No undefined references. All `\ref{fig:}` and
+  `\ref{tab:}` resolve. Benign warnings on `[h]` → `[ht]` float
+  specifier and one overfull hbox in the ensemble-ablation table.
+- Output: `paper/caisc_main.pdf`, 19 pages total
+  (main content ~8 pages + bibliography + two checklists + appendix).
+
+**Artifacts.**
+- `runs/cqr/vanilla_conformal_results.json`
+- `runs/ensemble/ablation_ensemble_size.json`
+- `scripts/phase_revision_ablations.py`
+- `paper/caisc_main.tex` (revised)
+- `paper/caisc_main.pdf`

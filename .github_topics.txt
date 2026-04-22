@@ -1,0 +1,7 @@
+graph-neural-networks
+uncertainty-quantification
+conformal-prediction
+finite-element-analysis
+deep-ensembles
+structural-mechanics
+scientific-machine-learning

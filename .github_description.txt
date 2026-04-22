@@ -1,0 +1,1 @@
+Fast stress prediction with built-in reliability: a GNN surrogate that knows when to trust itself and when to defer to FEA simulation.
