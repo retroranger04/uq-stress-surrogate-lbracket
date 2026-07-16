@@ -2,8 +2,8 @@
 Locked (non-parametric) constants for the L-bracket study.
 
 Every number here is a *deliberate* modeling choice. See inline comments for the
-justification; the same choices are mirrored in agent_log.md (Day 2 entry) and
-will be stated explicitly in paper/main.tex Methods.
+justification; the same choices are stated explicitly in the accompanying
+paper's Methods section.
 
 Units: millimetres, newtons, megapascals. Consistent set: mm-N-MPa
     stress [MPa] = force [N] / area [mm^2]

@@ -2,6 +2,12 @@
 
 This project builds a fast AI model that predicts mechanical stress in structural L-shaped brackets, replacing expensive finite-element simulations (minutes per run) with millisecond-speed predictions. The key contribution is a reliability layer that quantifies how confident the model is in each prediction — and raises a flag when the engineer should run the full simulation instead. We validate this on a parametric 2D L-bracket with three variable geometric parameters (fillet radius, hole position, flange width), using a pre-registered out-of-distribution (OOD) test protocol that was locked before any model training began.
 
+## Paper
+
+This code accompanies the paper "Uncertainty-Aware Neural Surrogate for Parametric L-Bracket Stress Prediction," accepted at the 1st Conference For AI Scientists (CAISc 2026), Open-Ended Track (non-archival).
+
+Full paper, reviews, and camera-ready version available on OpenReview: https://openreview.net/forum?id=9ETDVVultp
+
 ## Key Results
 
 - **1.81% per-node MAPE** on the held-out test set (500 samples); 0.42% error on peak stress prediction — the safety-critical quantity.
@@ -13,15 +19,11 @@ This project builds a fast AI model that predicts mechanical stress in structura
 ## Repository Structure
 
 ```
-paper/       LaTeX source, figures, tables, and bibliography for the CAISc 2026 submission
-src/         Python source: FEA pipeline (src/fea/), GNN model (src/models/), UQ layer (src/uq/), evaluation (src/eval/)
-scripts/     End-to-end pipeline scripts: FEA sweep, GNN training, CQR calibration, OOD evaluation, figure generation
+src/         Python source: FEA pipeline (src/fea/), GNN model (src/models/), UQ layer (src/uq/); src/eval/ is reserved scaffolding — evaluation code lives in scripts/ (see below)
+scripts/     End-to-end pipeline scripts: FEA sweep, GNN training, CQR calibration, OOD evaluation (phase1_eval.py, phase2_cqr.py, phase3_ood.py), figure generation
 runs/        Saved model checkpoints and evaluation artifacts (baseline, HP sweep, ensemble, CQR)
 data/        Dataset bundles — gitignored; regenerate with scripts/run_sweep_local.py + scripts/package_to_pyg.py
-notebooks/   Kaggle validation notebook from Day-2 pipeline verification
-raw/         Literature corpus (raw/papers/), bibliography, and Graphify knowledge graph
 tests/       Unit tests
-archive/     Superseded files kept for reference
 ```
 
 ## Method Overview
@@ -37,6 +39,8 @@ archive/     Superseded files kept for reference
 **Hardware used:** RTX 4060 Laptop GPU (8 GB VRAM), 24 GB RAM; FEA sweeps run in WSL2 (Ubuntu 24.04) with a Miniforge3 conda environment.
 
 **Key dependencies:** Python 3.14, PyTorch 2.11.0+cu126, PyTorch Geometric 2.7.0, FEniCSx 0.9.x (WSL2 only), scipy, numpy, matplotlib.
+
+**Environment note:** this project spans two separate environments. The Python surrogate/UQ code (training, CQR, evaluation, figures) runs in the Windows `venv/` described in `requirements.txt`. The FEA sweeps require WSL2 (Ubuntu 24.04) with a Miniforge3 conda environment pinned to `fenics-dolfinx=0.9.*` (dolfinx 0.10 breaks the `LinearProblem` API used here) — see `scripts/run_sweep_local.py` for the expected invocation. The two environments do not share dependencies.
 
 **1. Regenerate dataset** (WSL2, ~52 min end-to-end):
 ```bash
@@ -63,6 +67,8 @@ python scripts/phase3_ood.py            # OOD evaluation + deferral rule
 python scripts/make_paper_figures.py
 ```
 
+**Pre-registration.** The OOD evaluation protocol used in step 3 (parameter ranges, extrapolation directions, sample counts, seeds) was locked before any model was trained. The full protocol and the commit hash that fixed it are documented in `PREREGISTRATION.md` at the repository root, for independent verification.
+
 ## Citation
 
 ```bibtex
@@ -70,14 +76,16 @@ python scripts/make_paper_figures.py
   title={Uncertainty-Aware Neural Surrogate for Parametric L-Bracket Stress Prediction},
   author={Mathur, Arpit},
   year={2026},
-  note={Under review}
+  note={Accepted at the 1st Conference For AI Scientists (CAISc 2026), Open-Ended Track}
 }
 ```
 
+See `CITATION.cff` for machine-readable citation metadata.
+
 ## License
 
-License TBD.
+MIT (see LICENSE).
 
 ## Acknowledgments
 
-AI coding tools were used extensively throughout this project. Full disclosure — including session logs, orchestrator identity, and a detailed AI Involvement Checklist — is provided in `paper/ai_disclosure.tex` and in `agent_log.md`.
+AI coding tools were used extensively throughout this project. Full disclosure of the extent and nature of this involvement is provided via the AI Involvement Checklist in the accompanying paper.

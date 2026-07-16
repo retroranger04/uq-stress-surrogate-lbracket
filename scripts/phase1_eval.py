@@ -224,6 +224,14 @@ def main() -> None:
     # ---- Figure 3: example predictions (best / median / worst by per-sample err) ----
     order = np.argsort(per_sample_err)
     pick_idx = [order[0], order[len(order)//2], order[-1]]
+    # Shared color scales across the best/median/worst rows for the error and
+    # uncertainty panels: without this each panel auto-normalizes to its own
+    # max, so a low-error sample renders as bright as a high-error one. A
+    # single shared vmax makes the magnitudes visually comparable. Truth and
+    # prediction stay on a per-sample stress scale (same physical range).
+    err_vmax = max(float(np.abs(ensemble_mean[gi] - gt_list[gi]).max())
+                   for gi in pick_idx)
+    std_vmax = max(float(ensemble_std[gi].max()) for gi in pick_idx)
     fig, axes = plt.subplots(3, 4, figsize=(14, 9))
     for row, gi in enumerate(pick_idx):
         # Coordinates come from the raw un-normalized pos tensor — we kept those
@@ -234,15 +242,16 @@ def main() -> None:
         sd = ensemble_std[gi]
         err = np.abs(yp - yt)
         vmax = max(yt.max(), yp.max())
-        for ax, vals, title in zip(
+        for ax, vals, title, vmx in zip(
             axes[row],
             [yt, yp, err, sd],
             ["ground truth σ_vm [MPa]", "ensemble mean [MPa]",
              "|error| [MPa]", "ensemble std [MPa]"],
+            [vmax, vmax, err_vmax, std_vmax],
         ):
             sc = ax.scatter(pos[:, 0], pos[:, 1], c=vals, s=4,
                             cmap=("viridis" if "std" not in title and "error" not in title else "magma"),
-                            vmin=0, vmax=(vmax if title != "ensemble std [MPa]" and title != "|error| [MPa]" else None))
+                            vmin=0, vmax=vmx)
             ax.set_aspect("equal")
             ax.set_xticks([]); ax.set_yticks([])
             plt.colorbar(sc, ax=ax, fraction=0.046)

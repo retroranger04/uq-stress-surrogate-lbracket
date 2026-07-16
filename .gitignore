@@ -60,7 +60,11 @@ desktop.ini
 *.snm
 *.vrb
 paper/main.pdf
+paper/
 
 # Project-local archive (dead branches)
 archive/
 runs/
+
+# Developer-only content (not part of the public artifact)
+local/

@@ -1,8 +1,8 @@
 """
 Locked parameter ranges and sweep configuration for the L-bracket surrogate.
 
-Ranges locked 2026-04-16 in live Day-2 discussion with Arpit (see agent_log.md
-Day 2 entry). Do NOT adjust without re-running the visualizer + reconfirming.
+Ranges locked 2026-04-16. Do NOT adjust without re-running the visualizer +
+reconfirming.
 
 Binding constraint: Hole 1 is fixed at y = 40 mm, so W + R <= 34 mm (after the
 hole-radius + clearance margin). The joint corner (R=10, W=24) is exactly on

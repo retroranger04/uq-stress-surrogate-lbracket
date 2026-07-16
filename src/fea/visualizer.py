@@ -1,10 +1,8 @@
 """
 Matplotlib-based visualizer for the L-bracket.
 
-Used during the live parameter-range discussion so the user can see what each
-proposed (R, p, W) looks like before committing. Kept deliberately minimal —
-this is not a production plotting module, just a faithful 2D rendering of the
-geometry described in geometry.py.
+Kept deliberately minimal — this is not a production plotting module, just a
+faithful 2D rendering of the geometry described in geometry.py.
 """
 
 from __future__ import annotations

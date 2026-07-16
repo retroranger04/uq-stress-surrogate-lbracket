@@ -341,6 +341,13 @@ def compute_all(args) -> None:
     order = np.argsort(per_sample_err)
     pick_idx = [int(order[0]), int(order[len(order)//2]), int(order[-1])]
     pos_list_test = split_arrays(test["pos"].reshape(-1, 2), test_offsets)
+    # Shared interval-width color scale across the best/median/worst rows so a
+    # narrow interval reads as visibly cooler than a wide one; without it each
+    # width panel auto-normalizes and the widths look identical. The
+    # miscoverage mask is a fixed 0/1 scale and truth/mean stay per-sample.
+    width_vmax = float(max((hi_t[test_offsets[gi]:test_offsets[gi+1]]
+                            - lo_t[test_offsets[gi]:test_offsets[gi+1]]).max()
+                           for gi in pick_idx))
     fig, axes = plt.subplots(3, 4, figsize=(14, 9))
     for row, gi in enumerate(pick_idx):
         s, e = test_offsets[gi], test_offsets[gi+1]
@@ -352,7 +359,7 @@ def compute_all(args) -> None:
         panels = [
             (yt, "ground truth $\\sigma_{vm}$ [MPa]", "viridis", 0, vmax),
             (yp, "ensemble mean [MPa]", "viridis", 0, vmax),
-            (w, "interval width [MPa]", "magma", None, None),
+            (w, "interval width [MPa]", "magma", 0, width_vmax),
             (((yt < lo) | (yt > hi)).astype(float),
              "miscovered nodes (1 = outside)", "Reds", 0, 1),
         ]

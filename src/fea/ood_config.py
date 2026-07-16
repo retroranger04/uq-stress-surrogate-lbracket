@@ -1,11 +1,10 @@
 """
-Pre-registered OOD protocol (locked 2026-04-16, Day 3, BEFORE any training).
+Pre-registered OOD protocol (locked BEFORE any training).
 
-See paper/NOTES.md section "Pre-registered OOD protocol" for the full
-rationale and commitments. This module exposes the numerical parameters of
-that protocol so the OOD sweep runner (notebooks/day3_ood_sweep.ipynb) can
-import them without re-deriving anything. Do NOT adjust these values after
-model training has begun \u2014 that would break the pre-registration.
+This module exposes the numerical parameters of that protocol so the OOD
+sweep runner (notebooks/day3_ood_sweep.ipynb) can import them without
+re-deriving anything. Do NOT adjust these values after model training has
+begun \u2014 that would break the pre-registration.
 
 OOD ranges extend each training bound by 20% of the training span. The
 feasibility-filter (geometry.check_validity) may further clip these; the
@@ -49,10 +48,10 @@ SINGLE_PARAM_DIRECTIONS = [
     ("p", "low"),  ("p", "high"),
     ("W", "low"),  ("W", "high"),
 ]
-SAMPLES_PER_DIRECTION = 25           # 6 directions * 25 = 150 single-param OOD (Day 3.5 scale-up)
+SAMPLES_PER_DIRECTION = 25           # 6 directions * 25 = 150 single-param OOD
 N_SINGLE_PARAM_OOD = SAMPLES_PER_DIRECTION * len(SINGLE_PARAM_DIRECTIONS)  # 150
 
-N_CORNER_OOD = 100                   # >=2 parameters simultaneously OOD (Day 3.5 scale-up)
+N_CORNER_OOD = 100                   # >=2 parameters simultaneously OOD
 CORNER_OOD_OVERSAMPLE = 1500         # oversample the LHS box before filtering
 
 OOD_TOTAL_TARGET = N_SINGLE_PARAM_OOD + N_CORNER_OOD  # 250

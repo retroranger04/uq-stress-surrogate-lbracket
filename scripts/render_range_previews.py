@@ -1,6 +1,6 @@
 """
 Generate geometry previews at proposed lower / midpoint / upper bounds for
-each of R, p, W. Used in the live Day-2 range-locking discussion with Arpit.
+each of R, p, W.
 
 Tentative proposed ranges (justification in the console output):
     R in [3.0, 15.0] mm

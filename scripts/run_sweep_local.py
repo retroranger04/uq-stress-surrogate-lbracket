@@ -1,9 +1,9 @@
 """
-Local WSL2 FEA sweep runner for the L-bracket surrogate (Day 3 recovery).
+Local WSL2 FEA sweep runner for the L-bracket surrogate.
 
-Replaces the old Kaggle notebook pipeline after four consecutive Kaggle failures
-(see agent_log.md 2026-04-17 pivot entry). Runs a single-process sequential
-sweep inside a WSL2 Ubuntu conda env with fenics-dolfinx=0.9.* + gmsh.
+Replaces the old Kaggle notebook pipeline after four consecutive Kaggle failures.
+Runs a single-process sequential sweep inside a WSL2 Ubuntu conda env with
+fenics-dolfinx=0.9.* + gmsh.
 
 Contract:
     - Output one .npz per sample under <output>/samples/, plus a manifest.json.
@@ -24,14 +24,14 @@ Contract:
 
 Expected invocation inside WSL2 Ubuntu (fenicsx conda env active):
     conda activate fenicsx
-    cd /mnt/a/AntigravityWF/projects/uq-stress-surrogate-lbracket
+    cd <repo-root>  # the WSL2 mount path to this repository on your machine
     python scripts/run_sweep_local.py --mode main --output ~/lbracket-sweep/output/main --target 1000
     python scripts/run_sweep_local.py --mode ood  --output ~/lbracket-sweep/output/ood
     python scripts/run_sweep_local.py --mode validate --output ~/lbracket-sweep/output/validate
 
-The runner reads FEA source from /mnt/a/... but writes all output + tmp mesh
-to ~/lbracket-sweep/... to avoid the /mnt filesystem I/O penalty during the
-compute-heavy phase.
+The runner reads FEA source from the local repository root but writes all
+output + tmp mesh to ~/lbracket-sweep/... to avoid the WSL mounted-filesystem
+I/O penalty during the compute-heavy phase.
 """
 
 from __future__ import annotations
@@ -473,11 +473,11 @@ def run_sweep(output_dir: Path,
 # ---------------------------------------------------------------------------
 
 def mode_validate(args):
-    """Single nominal sample for Day 2 cross-check. Writes solve timings."""
+    """Single nominal sample for a reference cross-check. Writes solve timings."""
     p = LBracketParams(R=cfg.NOMINAL["R"], p=cfg.NOMINAL["p"], W=cfg.NOMINAL["W"])
     out = Path(args.output).expanduser()
     (out / "samples").mkdir(parents=True, exist_ok=True)
-    print(f"[validate] nominal R={p.R} p={p.p} W={p.W}, w=1.0 MPa (Day 2 reference)", flush=True)
+    print(f"[validate] nominal R={p.R} p={p.p} W={p.W}, w=1.0 MPa (reference)", flush=True)
     ram0 = ram_pct()
     tmp = Path(tempfile.mkdtemp(prefix="lbracket_validate_", dir=str(out)))
     try:
@@ -495,10 +495,10 @@ def mode_validate(args):
               f"peak_xy=({float(blob['peak_xy'][0]):.2f},{float(blob['peak_xy'][1]):.2f}) "
               f"n_dofs={int(blob['n_dofs_l2'])}", flush=True)
         print(f"[validate] RAM before={ram0:.1f}% after_solve={ram1:.1f}% after_cleanup={ram2:.1f}%", flush=True)
-        # Day 2 reference: 45.643 MPa at w=1 MPa, peak at (22.78, 19.60) mm, level 3.
+        # Reference: 45.643 MPa at w=1 MPa, peak at (22.78, 19.60) mm, level 3.
         ref = 45.643
         err = abs(float(blob['peak_vm']) - ref) / ref * 100.0
-        print(f"[validate] vs Day 2 (45.643 MPa): Δ={err:.2f}% (tolerance 2%)", flush=True)
+        print(f"[validate] vs reference (45.643 MPa): Δ={err:.2f}% (tolerance 2%)", flush=True)
         return {"peak_vm": float(blob['peak_vm']),
                 "ref": ref,
                 "pct_err": err,

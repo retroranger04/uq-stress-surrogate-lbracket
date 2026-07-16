@@ -5,8 +5,7 @@ training loop, metric computation.
 
 Kept as a small module alongside the Phase-0 `train.py` skeleton so the .pt
 bundle workflow (what Phase 1+ actually uses) stays distinct from the
-npz-directory workflow that built the bundles. See agent_log.md 2026-04-20
-for the split rationale.
+npz-directory workflow that built the bundles.
 """
 
 from __future__ import annotations

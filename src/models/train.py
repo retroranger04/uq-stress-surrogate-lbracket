@@ -1,13 +1,11 @@
 """
-Training skeleton for the Phase-1 GNN surrogate.
+Trains the MeshGNN stress surrogate.
 
-Not runnable end-to-end until the real Kaggle-published training dataset is
-available (Phase C of Day 3 finishes the publishing). The structure is
-complete \u2014 dataset path + output dir are the only knobs Day-4 should need
-to twist. Ensemble training (Phase 2 of the paper) reuses this same loop
-with different seeds and a different output dir.
+Required inputs: `data_root` (path to the training dataset) and `out_dir`
+(where checkpoints and logs are written). Ensemble training reuses this same
+loop with different seeds and a different output dir.
 
-Design choices locked in `paper/NOTES.md` "Phase 1 experiment plan":
+Design choices:
     - Loss: per-node Huber (delta=1.0 MPa)
     - Optimizer: Adam (default beta)
     - LR schedule: cosine decay to 1e-5

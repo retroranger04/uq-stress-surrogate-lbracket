@@ -30,8 +30,8 @@ Inner boundaries (holes, interior loops — traversed CW so material stays on th
 
 The parametric variables are R, p, W; everything else is fixed in constants.py.
 
-All modeling decisions encoded here are logged in agent_log.md (Day 2) and will
-appear in paper Methods; the working principle is "no silent assumptions".
+All modeling decisions encoded here appear in the accompanying paper's Methods
+section; the working principle is "no silent assumptions".
 """
 
 from __future__ import annotations

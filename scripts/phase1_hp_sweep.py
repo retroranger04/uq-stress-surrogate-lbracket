@@ -5,7 +5,7 @@ Trains three candidate configs for a short budget, ranks by validation
 per-node MAPE. Decision is locked before Step-6 ensemble training. The
 test split is NEVER touched here.
 
-Candidates (per paper/NOTES.md Phase-1 experiment plan):
+Candidates:
     - (H=128, L=5, lr=5e-4)  # default; matches the already-trained baseline
     - (H=64,  L=5, lr=5e-4)  # narrower hidden
     - (H=128, L=3, lr=5e-4)  # shallower processor

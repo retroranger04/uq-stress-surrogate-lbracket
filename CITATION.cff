@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Uncertainty-Aware Neural Surrogate for Parametric L-Bracket Stress Prediction"
+authors:
+  - family-names: Mathur
+    given-names: Arpit
+    email: retroranger24@gmail.com
+version: "camera-ready"
+date-released: 2026-07-18
+license: MIT
+repository-code: "https://github.com/retroranger04/uq-stress-surrogate-lbracket"
+abstract: >
+  A MeshGraphNets-style GNN surrogate for 2D plane-stress von Mises stress
+  prediction on a parametric flat L-bracket, wrapped in a deployment-calibrated
+  reliability layer combining a 5-member Deep Ensemble with conformalized
+  quantile regression. Includes pre-registered out-of-distribution evaluation
+  and a defer-to-FEA decision rule.
+keywords:
+  - uncertainty quantification
+  - conformal prediction
+  - graph neural networks
+  - deep ensembles
+  - structural mechanics
+  - neural surrogates
+  - finite element analysis
+  - out-of-distribution detection
+preferred-citation:
+  type: conference-paper
+  title: "Uncertainty-Aware Neural Surrogate for Parametric L-Bracket Stress Prediction"
+  authors:
+    - family-names: Mathur
+      given-names: Arpit
+  conference:
+    name: "1st Conference For AI Scientists (CAISc 2026)"
+  year: 2026

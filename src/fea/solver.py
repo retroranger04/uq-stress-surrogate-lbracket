@@ -5,8 +5,7 @@ Consumes a .msh produced by src/fea/mesh.py and returns the displacement and
 von Mises stress fields along with the peak stress value.
 
 Every modeling choice here is deliberate; each is annotated inline. The same
-justifications are logged in agent_log.md (Day 2) and will appear in
-paper/main.tex Methods.
+justifications appear in the accompanying paper's Methods section.
 
 Run environment: Kaggle CPU notebook with FEniCSx (dolfinx) installed. This
 module imports dolfinx lazily so the rest of the package remains importable
