@@ -8,13 +8,9 @@ This code accompanies the paper "Uncertainty-Aware Neural Surrogate for Parametr
 
 Full paper, reviews, and camera-ready version available on OpenReview: https://openreview.net/forum?id=9ETDVVultp
 
-## Key Results
+## Key Finding
 
-- **1.81% per-node MAPE** on the held-out test set (500 samples); 0.42% error on peak stress prediction — the safety-critical quantity.
-- **Guaranteed 90% coverage**: the conformal prediction interval contains the true stress value at 91.28% of nodes, meeting the formal finite-sample coverage theorem.
-- **Uncertainty tracks difficulty**: sample-level Pearson correlation between ensemble spread and prediction error = **0.944**, validating the reliability signal.
-- **OOD detection**: a simple threshold deferral rule achieves **34% OOD detection at 5% false-alarm rate** on the in-distribution test set; corner-extrapolation cases (all three parameters simultaneously out of range) are caught **58%** of the time.
-- **OOD coverage gracefully degrades** from 91.3% (in-distribution) to 83.7% (OOD) — the reliability layer correctly signals the regime where the guarantee no longer applies.
+For neural surrogates replacing engineering simulations, knowing when the model can be trusted is as important as raw accuracy. Combining ensemble disagreement with conformal calibration equips the surrogate with a calibrated reliability signal that reliably tracks operation outside the training regime — foundation enough for downstream applications to build their own trust-or-defer policies.
 
 ## Repository Structure
 
