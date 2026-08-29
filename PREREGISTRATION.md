@@ -20,34 +20,43 @@ protocol predates the first training run.
 
 ## Git evidence
 
-- **Pre-registration commit:** `fa793a34e7b4f117d1cb37cb688f34667dbd323a`
-  (short: `fa793a3`) — *"Clean up failed Kaggle Day 3 artifacts — pivoting to
-  local WSL2 execution"*, committed 2026-04-17 20:47:42 +05:30. This commit
+- **Pre-registration commit:** `0217d433a6c2d81e3e9a9e5f8d6e12df5ad046bb`
+  (short: `0217d43`) — *"Add pre-registered out-of-distribution evaluation
+  protocol"*, committed 2026-04-17 20:47:42 +05:30. This commit
   introduced the `## Pre-registered OOD protocol` section into
-  `paper/NOTES.md` (verified via `git log --all --oneline -- paper/NOTES.md`
-  plus a content check across both commits that ever touched the file — only
-  this commit and the initial skeleton commit `d8052ae` modify
-  `paper/NOTES.md` in the entire history, and `d8052ae` does not contain the
+  `paper/NOTES.md` (verified via `git log --oneline -- paper/NOTES.md`
+  plus a content check across both commits that ever touched the file before
+  removal — only this commit and the initial skeleton commit `f3e05b5` modify
+  `paper/NOTES.md` before it was untracked, and `f3e05b5` does not contain the
   protocol text).
-- **First training commit:** `71b9a26ca55a400b6d2b71f422b7923b6212edb2`
-  (short: `71b9a26`) — *"Phase 1: GNN surrogate + Deep Ensemble +
-  test-set eval"*, committed 2026-04-18 11:24:24 +05:30. This is the first
-  commit in the repository's history that trains a model (the bare GNN
+- **First training commit:** `2ecff1e11f5b64b2eaabd831a28c5072551a8a7f`
+  (short: `2ecff1e`) — *"Train 5-member Deep Ensemble on parametric
+  L-bracket dataset"*, committed 2026-04-18 11:24:24 +05:30. This is the
+  first commit in the repository's history that trains a model (the bare GNN
   surrogate and the 5-member Deep Ensemble); no training occurs in any
   earlier commit.
 - **Time delta:** 14 hours 36 minutes 42 seconds — the pre-registration
   commit precedes the first training commit by roughly half a day, crossing
   one calendar-day boundary (2026-04-17 to 2026-04-18).
 
-> **Note on commit hashes.** This repository's history was rewritten with
-> `git filter-repo` prior to public release to strip large PDF corpus files
-> out of `raw/papers/`. That rewrite changed every commit hash in the
-> repository. The hashes above are the current, post-rewrite hashes and are
+> **Note on commit hashes.** This repository's history has been rewritten
+> three times prior to public release: once with `git filter-repo` to strip
+> large PDF corpus files out of `raw/papers/`; once via an interactive rebase
+> (2026-08-29) that squashed the development history from 35 commits into 7
+> for a cleaner public log; and once more via a same-day follow-up rebase
+> that corrected the author/committer dates on the non-anchor squashed
+> commits to reflect when that work actually happened (rather than the time
+> of the squash itself). All three rewrites changed commit hashes throughout
+> the repository — including, as a side effect of the parent chain shifting,
+> the hashes of the two anchor commits below, even though their own author
+> and committer timestamps were deliberately left untouched by every rewrite
+> specifically so their timestamps (and therefore the time delta above)
+> stayed exact. The hashes above are the current, post-rewrite hashes and are
 > the ones that resolve against the published history.
 
 ## Full protocol text
 
-*(Reproduced verbatim from `paper/NOTES.md` as committed in `fa793a3`.)*
+*(Reproduced verbatim from `paper/NOTES.md` as committed in `0217d43`.)*
 
 ### Pre-registered OOD protocol (locked 2026-04-16, Day 3, BEFORE any model training)
 
