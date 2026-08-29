@@ -85,7 +85,3 @@ See `CITATION.cff` for machine-readable citation metadata.
 ## License
 
 MIT (see LICENSE).
-
-## Acknowledgments
-
-AI coding tools were used extensively throughout this project. Full disclosure of the extent and nature of this involvement is provided via the AI Involvement Checklist in the accompanying paper.
